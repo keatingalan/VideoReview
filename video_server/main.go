@@ -319,16 +319,7 @@ func saveEvent(msg EventMsg) {
 	case "stopped", "scoring":
 		const tenMin = int64(10 * 60 * 1000)
 		windowStart := msg.TimeStart - tenMin
-		timeField := "time_stop"
-		timeValue := msg.TimeStop
-		if msg.Status == "scoring" {
-			timeField = "time_score"
-			timeValue = msg.TimeScore
-		}
-		if timeValue == nil {
-			now := msg.TimeStart
-			timeValue = &now
-		}
+		now := msg.TimeStart
 
 		var existingID int64
 		err := db.QueryRow(`SELECT id FROM routines
@@ -341,15 +332,78 @@ func saveEvent(msg EventMsg) {
 		).Scan(&existingID)
 
 		if err == nil {
-			query := "UPDATE routines SET " + timeField + " = ? WHERE id = ?"
-			if _, err := db.Exec(query, *timeValue, existingID); err != nil {
+			// Build SET clause dynamically.
+			//
+			// time_stop  — always set (routine has ended); COALESCE preserves any
+			//              value already written by a prior update.
+			// time_score — also set when the message carries score data.
+			// All non-zero score fields from the message are written too.
+			setClauses := []string{"time_stop = COALESCE(time_stop, ?)"}
+			args := []any{now}
+
+			hasScore := msg.FinalScore != 0 || msg.D != 0 || msg.E != 0 || msg.Score1 != 0 ||
+				msg.D2 != 0 || msg.E2 != 0 || msg.Score2 != 0
+
+			if hasScore {
+				scoreTime := now
+				if msg.TimeScore != nil {
+					scoreTime = *msg.TimeScore
+				}
+				setClauses = append(setClauses, "time_score = COALESCE(time_score, ?)")
+				args = append(args, scoreTime)
+			}
+			if msg.D != 0 {
+				setClauses = append(setClauses, "d = ?")
+				args = append(args, msg.D)
+			}
+			if msg.E != 0 {
+				setClauses = append(setClauses, "e = ?")
+				args = append(args, msg.E)
+			}
+			if msg.ND != 0 {
+				setClauses = append(setClauses, "nd = ?")
+				args = append(args, msg.ND)
+			}
+			if msg.FinalScore != 0 {
+				setClauses = append(setClauses, "final_score = ?")
+				args = append(args, msg.FinalScore)
+			}
+			if msg.Score1 != 0 {
+				setClauses = append(setClauses, "score1 = ?")
+				args = append(args, msg.Score1)
+			}
+			if msg.D2 != 0 {
+				setClauses = append(setClauses, "d2 = ?")
+				args = append(args, msg.D2)
+			}
+			if msg.E2 != 0 {
+				setClauses = append(setClauses, "e2 = ?")
+				args = append(args, msg.E2)
+			}
+			if msg.ND2 != 0 {
+				setClauses = append(setClauses, "nd2 = ?")
+				args = append(args, msg.ND2)
+			}
+			if msg.Score2 != 0 {
+				setClauses = append(setClauses, "score2 = ?")
+				args = append(args, msg.Score2)
+			}
+
+			args = append(args, existingID)
+			query := "UPDATE routines SET " + strings.Join(setClauses, ", ") + " WHERE id = ?"
+			if _, err := db.Exec(query, args...); err != nil {
 				log.Printf("saveEvent update error: %v", err)
 			}
 		} else {
-			query := "INSERT INTO routines (server, apparatus, competitor, name, club, time_start, " + timeField + ") VALUES (?,?,?,?,?,?,?)"
-			if _, err := db.Exec(query,
+			// No open row found — insert a skeleton row with just time_start.
+			// Do not set time_stop: we have no matching "competing" record so
+			// this arrival is out-of-order; leave the row open rather than
+			// immediately closing it.
+			if _, err := db.Exec(`INSERT INTO routines
+				(server, apparatus, competitor, name, club, time_start)
+				VALUES (?,?,?,?,?,?)`,
 				msg.Server, msg.Apparatus, msg.Competitor,
-				msg.Name, msg.Club, msg.TimeStart, *timeValue,
+				msg.Name, msg.Club, msg.TimeStart,
 			); err != nil {
 				log.Printf("saveEvent insert (no match) error: %v", err)
 			}
@@ -922,7 +976,7 @@ func main() {
 	}
 	sort.Strings(keys)
 
-	mDNSserver, _ := zeroconf.Register("WAG-Video-Review", "_https._tcp", "local.", webPort, nil, nil)
+	mDNSserver, _ := zeroconf.Register("WAG-Video-Review", "_http._tcp", "local.", httpPort, nil, nil)
 	defer mDNSserver.Shutdown()
 
 	if len(keys) == 1 {

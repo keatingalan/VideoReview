@@ -10,8 +10,10 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -21,26 +23,26 @@ import (
 	. "github.com/lxn/walk/declarative"
 )
 
-
 // ProScoreMessage is the unified structure sent to the HTTP endpoint for all ports.
 type ProScoreMessage struct {
-	Time        int64  `json:"time"`
-	Server      string `json:"server"`
-	Status      string `json:"status"`
-	Apparatus   string `json:"apparatus"`
-	Competitor  string `json:"competitor"`
-	Name        string `json:"Name"`
-	Club        string `json:"club"`
-	DScore      float64 `json:"Dscore"`
-	EScore		float64
-	ND			float64
-	FinalScore	float64
-	Score1		float64
-	DScore2      float64 
-	EScore2		float64
-	ND2			float64
-	Score2		float64
-	FullMessage any `json:"fullMessage"`
+	Time        int64   `json:"time"`
+	Server      string  `json:"server"`
+	Status      string  `json:"status"`
+	Apparatus   string  `json:"apparatus"`
+	Competitor  string  `json:"competitor"`
+	Name        string  `json:"name"`
+	Club        string  `json:"club"`
+	Level       string  `json:"level"`
+	DScore      float64 `json:"dscore"`
+	EScore      float64 `json:"escore"`
+	ND          float64 `json:"nd"`
+	FinalScore  float64 `json:"finalScore"`
+	Score1      float64 `json:"score1"`
+	DScore2     float64 `json:"dscore2"`
+	EScore2     float64 `json:"escore2"`
+	ND2         float64 `json:"nd2"`
+	Score2      float64 `json:"score2"`
+	FullMessage any     `json:"fullMessage"`
 }
 
 type Stats struct {
@@ -73,6 +75,14 @@ var apparatus = map[string]string{
 	"4":  "Floor",
 }
 
+// apparatusKeypadID maps apparatus display name to the two-digit keypad ID string.
+var apparatusKeypadID = map[string]string{
+	"Vault": "01",
+	"Bars":  "02",
+	"Beam":  "03",
+	"Floor": "04",
+}
+
 // ── GUI widgets ───────────────────────────────────────────────────────────────
 
 var (
@@ -97,10 +107,9 @@ func main() {
 	err = MainWindow{
 		AssignTo: &mainWindow,
 		Title:    "Capture ProScore ScoreGen Messages",
-		//Icon:     1, //embedded in .syso file
-		MinSize: Size{Width: 660, Height: 540},
-		Size:    Size{Width: 660, Height: 540},
-		Layout:  VBox{Margins: Margins{Left: 8, Top: 8, Right: 8, Bottom: 8}, Spacing: 6},
+		MinSize:  Size{Width: 660, Height: 540},
+		Size:     Size{Width: 800, Height: 600},
+		Layout:   VBox{Margins: Margins{Left: 8, Top: 8, Right: 8, Bottom: 8}, Spacing: 6},
 		Children: []Widget{
 
 			// ── Stats group ──────────────────────────────────────────────
@@ -113,9 +122,6 @@ func main() {
 
 					Label{Text: "Uptime:"},
 					Label{AssignTo: &lblUptimeVal, Text: "00:00", ColumnSpan: 3},
-
-					//Label{Text: "Endpoint:"},
-					//Label{AssignTo: &lblEndpointVal, Text: "—", ColumnSpan: 3},
 
 					Label{Text: "Received:"},
 					Label{AssignTo: &lblRxVal, Text: "0"},
@@ -143,7 +149,7 @@ func main() {
 						MaxSize:  Size{Height: 24},
 					},
 					PushButton{
-						Text:    "Change Endpoint",
+						Text:    "Change Video Server",
 						MaxSize: Size{Width: 130},
 						OnClicked: func() {
 							go doChangeEndpoint()
@@ -181,10 +187,8 @@ func main() {
 
 	mainWindow.SetIcon(walk.IconApplication())
 
-	// Kick off background work
 	go startApp()
 
-	// Stats refresh ticker — must update UI on the GUI goroutine
 	go func() {
 		ticker := time.NewTicker(500 * time.Millisecond)
 		defer ticker.Stop()
@@ -199,7 +203,7 @@ func main() {
 	mainWindow.Run()
 }
 
-// ── UI helpers (always called on GUI goroutine via Synchronize) ───────────────
+// ── UI helpers ────────────────────────────────────────────────────────────────
 
 func refreshUI() {
 	stats.mu.Lock()
@@ -264,19 +268,19 @@ func updateURLDisplay() {
 	}
 }
 
-// ── Button handlers (run in goroutines) ──────────────────────────────────────
+// ── Button handlers ───────────────────────────────────────────────────────────
 
 func doChangeEndpoint() {
 	endpointMu.RLock()
 	cur := httpEndpoint
 	endpointMu.RUnlock()
 
-	url := guiInputBox("Change Endpoint", "Enter new HTTP endpoint URL:", cur)
+	url := guiInputBox("Change Video Server", "Enter new Video Server URL:", cur)
 	if url == "" {
 		return
 	}
-	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
-		guiAlert("Invalid URL", "URL must start with http:// or https://")
+	if !strings.HasPrefix(url, "http://") {
+		guiAlert("Invalid URL", "URL must start with http://")
 		return
 	}
 	endpointMu.Lock()
@@ -286,7 +290,7 @@ func doChangeEndpoint() {
 	stats.consecutiveFails = 0
 	stats.mu.Unlock()
 	updateURLDisplay()
-	appendLog("Endpoint updated: " + url)
+	appendLog("Video Server updated: " + url)
 }
 
 func doMDNS() {
@@ -303,12 +307,11 @@ func doMDNS() {
 	stats.consecutiveFails = 0
 	stats.mu.Unlock()
 	updateURLDisplay()
-	appendLog("Endpoint set via mDNS: " + ep)
+	appendLog("Video Server set via mDNS: " + ep)
 }
 
 // ── Walk dialog helpers ───────────────────────────────────────────────────────
 
-// guiInputBox shows a modal input dialog and returns the entered text (or "" on cancel).
 func guiInputBox(title, prompt, defaultVal string) string {
 	result := defaultVal
 	cancelled := true
@@ -372,7 +375,7 @@ func guiYesNo(title, message string) bool {
 	return <-result
 }
 
-// ── Endpoint setup ────────────────────────────────────────────────────────────
+// ── App startup ───────────────────────────────────────────────────────────────
 
 func bindUDP(port int) (*net.UDPConn, error) {
 	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("0.0.0.0:%d", port))
@@ -387,32 +390,28 @@ func bindUDP(port int) (*net.UDPConn, error) {
 }
 
 func startApp() {
-	appendLog("Waiting for endpoint configuration…")
+	appendLog("Waiting for Video Server configuration…")
 	httpEndpoint = guiGetHTTPEndpoint()
 	updateURLDisplay()
-	appendLog("Endpoint set: " + httpEndpoint)
+	appendLog("Video Server set: " + httpEndpoint)
 
-	// Enumerate this machine's non-loopback IPs once at startup
 	if err := initLocalIPs(); err != nil {
 		appendLog("Warning: could not enumerate local IPs: " + err.Error())
 	} else {
 		appendLog(fmt.Sprintf("Accepting from local IPs: %v", localIPs))
 	}
 
-	// Bind all ports before launching any listeners — fail fast if any port is unavailable
 	ports := []int{51520, 51521, 23467}
 	conns := make([]*net.UDPConn, len(ports))
 	for i, port := range ports {
 		conn, err := bindUDP(port)
 		if err != nil {
-			// Close any already-opened sockets
 			for j := 0; j < i; j++ {
 				conns[j].Close()
 			}
 			errMsg := fmt.Sprintf("Could not bind port %d:\n%v", port, err)
 			appendLog("ERROR: " + errMsg)
 			guiAlert("Fatal Error", errMsg)
-			// Update status label to show failure
 			mainWindow.Synchronize(func() {
 				lblStatusVal.SetText(fmt.Sprintf("⚠  Failed to bind port %d", port))
 			})
@@ -435,19 +434,17 @@ func startApp() {
 		}
 	}()
 
-	// Launch all listeners — each conn is closed when startApp returns via defer
 	for _, conn := range conns {
-		c := conn // capture loop variable
+		c := conn
 		defer c.Close()
 		go listenUDP(c)
 	}
 
-	// Block until signalled (listeners run as goroutines; keep startApp alive)
 	select {}
 }
 
 func guiGetHTTPEndpoint() string {
-	if guiYesNo("Endpoint Setup", "Search for an HTTP endpoint via mDNS?\n\nYes = Search mDNS\nNo = Enter URL manually") {
+	if guiYesNo("Video Server Setup", "Search for an Video Server via mDNS?\n\nYes = Search mDNS\nNo = Enter URL manually") {
 		appendLog("Searching mDNS (5s)…")
 		if ep := searchMDNS(); ep != "" {
 			return ep
@@ -455,17 +452,17 @@ func guiGetHTTPEndpoint() string {
 		appendLog("No mDNS service found — please enter URL manually.")
 	}
 	for {
-		url := guiInputBox("HTTP Endpoint", "Enter HTTP endpoint URL:", "http://")
+		url := guiInputBox("", "Enter Video Server URL:", "http://")
 		if url == "" {
-			if guiYesNo("No Endpoint", "No URL entered. Try mDNS search instead?") {
+			if guiYesNo("No Video Server", "No URL entered. Try mDNS search instead?") {
 				if ep := searchMDNS(); ep != "" {
 					return ep
 				}
 			}
 			continue
 		}
-		if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
-			guiAlert("Invalid URL", "URL must start with http:// or https://")
+		if !strings.HasPrefix(url, "http://") {
+			guiAlert("Invalid URL", "URL must start with http://")
 			continue
 		}
 		return url
@@ -499,7 +496,7 @@ func searchMDNS() string {
 		}
 	}()
 
-	if err = resolver.Browse(ctx, "_https._tcp", "local.", entries); err != nil {
+	if err = resolver.Browse(ctx, "_http._tcp.", "local.", entries); err != nil {
 		appendLog("mDNS browse error: " + err.Error())
 		return ""
 	}
@@ -510,12 +507,11 @@ func searchMDNS() string {
 		return ""
 	}
 	if len(found) == 1 && len(found[0].AddrIPv4) > 0 {
-		ep := fmt.Sprintf("https://%s:%d", found[0].AddrIPv4[0], found[0].Port)
+		ep := fmt.Sprintf("http://%s:%d", found[0].AddrIPv4[0], found[0].Port)
 		appendLog("mDNS auto-selected: " + ep)
 		return ep
 	}
 
-	// Multiple results — let user pick
 	var lines []string
 	for i, s := range found {
 		if len(s.AddrIPv4) > 0 {
@@ -532,16 +528,13 @@ func searchMDNS() string {
 	return fmt.Sprintf("http://%s:%d", found[sel-1].AddrIPv4[0], found[sel-1].Port)
 }
 
-// ── UDP listener ──────────────────────────────────────────────────────────────
-
-// ── Local IP tracking ────────────────────────────────────────────────────────────────────
+// ── Local IP tracking ─────────────────────────────────────────────────────────
 
 var (
 	localIPsMu sync.RWMutex
 	localIPs   []net.IP
 )
 
-// initLocalIPs enumerates all non-loopback unicast IPv4 addresses on this machine.
 func initLocalIPs() error {
 	ifaces, err := net.Interfaces()
 	if err != nil {
@@ -581,7 +574,6 @@ func initLocalIPs() error {
 	return nil
 }
 
-// isLocalIP returns true if ip matches one of this machine's non-loopback IPs.
 func isLocalIP(ip net.IP) bool {
 	ip4 := ip.To4()
 	if ip4 == nil {
@@ -597,14 +589,15 @@ func isLocalIP(ip net.IP) bool {
 	return false
 }
 
+// ── UDP listener ──────────────────────────────────────────────────────────────
+
 func listenUDP(conn *net.UDPConn) {
 	conn.SetReadBuffer(65536)
 
-	// Destination port is fixed — it's the port this socket is bound to
 	destPort := conn.LocalAddr().(*net.UDPAddr).Port
 
 	buffer := make([]byte, 4096)
-	oob := make([]byte, 1024) // out-of-band control message buffer
+	oob := make([]byte, 1024)
 
 	for {
 		n, _, _, src, err := conn.ReadMsgUDP(buffer, oob)
@@ -613,8 +606,7 @@ func listenUDP(conn *net.UDPConn) {
 		}
 		data := string(buffer[:n])
 
-		//Reject status updates on port 23467?
-		if destPort == 23467 && data[0:9] == "SCOREGEN," { //This is a routine status update
+		if destPort == 23467 && len(data) >= 9 && data[0:9] == "SCOREGEN," {
 			continue
 		}
 		appendLog(fmt.Sprintf("Pkt: src=%s:%d → dst port=%d - %s", src.IP, src.Port, destPort, data))
@@ -624,15 +616,12 @@ func listenUDP(conn *net.UDPConn) {
 		stats.queueSize++
 		stats.mu.Unlock()
 
-		// Parse message into ProScoreMessage based on port
 		var msg ProScoreMessage
 		var parseErr error
 		switch destPort {
 		case 51521:
-			// XML from ScoreGen — NowUp or NewScore element
 			msg, parseErr = parseXMLMessage(src.IP.String(), data)
 		case 51520:
-			// CSV PODIUM-* messages
 			msg, parseErr = parseCSVMessage(src.IP.String(), data)
 		case 23467:
 			msg, parseErr = parseCSVMessage(src.IP.String(), data)
@@ -651,12 +640,10 @@ func listenUDP(conn *net.UDPConn) {
 	}
 }
 
-// ── Message parsers ──────────────────────────────────────────────────────────
+// ── Message parsers ───────────────────────────────────────────────────────────
 
-// parseXMLMessage handles port 51520: XML with a NowUp or NewScore root element.
-// NowUp → status=competing, NewScore → status=stopped.
+// parseXMLMessage handles port 51521: XML with a NowUp or NewScore root element.
 func parseXMLMessage(server, data string) (ProScoreMessage, error) {
-	// Parse XML into a generic map
 	decoder := xml.NewDecoder(strings.NewReader(data))
 	root, err := xmlNodeToMap(decoder)
 	if err != nil {
@@ -683,18 +670,47 @@ func parseXMLMessage(server, data string) (ProScoreMessage, error) {
 		msg.Competitor = attrs["Num"]
 		msg.Name = attrs["FName"] + " " + attrs["LName"]
 		msg.Club = xmlStr(newScore, "Gym")
-		msg.Level=attrs["Level"]
-		msg.FinalScore=attrs["Score"]
-		//Try to get the rest of the information via http to ScoreGen
-		info,err=GetCompetitorInfoByHTTP(msg.Competitor,1) //Not sure what happens if get wrong group!
-		msg.Dscore=info.Start_Value1
-		msg.Escore=info.EScore1
-		msg.ND=info.Adjust1
-		msg.Score1=info.Score1
-		msg.Dscore2=info.Start_Value2
-		msg.Escore2=info.EScore2
-		msg.ND2=info.Adjust2
-		msg.Score2=info.Score2
+		msg.Level = attrs["Level"]
+		if f, err := strconv.ParseFloat(attrs["Score"], 64); err == nil {
+			msg.FinalScore = f
+		}
+		// Enrich with detailed scores from ProScore HTTP API.
+		// On any error or apparatus mismatch, leave the message as-is.
+		info, err := GetCompetitorInfoByHTTP(msg.Competitor, 1, msg.Apparatus)
+		if err != nil {
+			appendLog(fmt.Sprintf("GetCompetitorInfo warning: %v", err))
+		} else if info != nil {
+			if info.StartValue1 != nil {
+				msg.DScore = *info.StartValue1
+			}
+			if info.EScore1 != nil {
+				msg.EScore = *info.EScore1
+			}
+			if info.Adjust1 != nil {
+				msg.ND = *info.Adjust1
+			}
+			if info.Score1 != nil {
+				msg.Score1 = *info.Score1
+			}
+			if info.StartValue2 != nil {
+				msg.DScore2 = *info.StartValue2
+			}
+			if info.EScore2 != nil {
+				msg.EScore2 = *info.EScore2
+			}
+			if info.Adjust2 != nil {
+				msg.ND2 = *info.Adjust2
+			}
+			if info.Score2 != nil {
+				msg.Score2 = *info.Score2
+			}
+			if info.Level != "" {
+				msg.Level = info.Level
+			}
+			if info.Gym != "" {
+				msg.Club = info.Gym
+			}
+		}
 	} else {
 		msg.Status = "unknown"
 	}
@@ -702,7 +718,6 @@ func parseXMLMessage(server, data string) (ProScoreMessage, error) {
 	return msg, nil
 }
 
-// xmlAttrs extracts the _attr sub-map from an xmlNodeToMap result as flat strings.
 func xmlAttrs(node map[string]any) map[string]string {
 	result := map[string]string{}
 	if attrs, ok := node["_attr"].(map[string]string); ok {
@@ -714,7 +729,6 @@ func xmlAttrs(node map[string]any) map[string]string {
 	return result
 }
 
-// xmlStr returns a string child element value from an xmlNodeToMap node.
 func xmlStr(node map[string]any, key string) string {
 	if child, ok := node[key].(map[string]any); ok {
 		if text, ok := child["_text"].(string); ok {
@@ -724,14 +738,7 @@ func xmlStr(node map[string]any, key string) string {
 	return ""
 }
 
-// parseCSVMessage handles port 51521: comma-separated PODIUM-* messages.
-// Matches Node.js CSV logic with quoted-field-aware splitting.
-// Format examples:
-//
-//		PODIUM-STATUS,0,VT,42(competitornum),"Jane","Smith","Club"
-//		PODIUM-SCORE,VT
-//		PODIUM-CLEAR,VT
-//	 SCOREGEN-LAST,1,3(apparatus),42(competitornum),"Jane Smith",2(rotation?),2.0(E1),E2,E3,E4,E5,E6,D,E,ND,Final
+// parseCSVMessage handles ports 51520 and 23467: comma-separated PODIUM-* / SCOREGEN-* messages.
 func parseCSVMessage(server, data string) (ProScoreMessage, error) {
 	fields := splitCSV(strings.TrimSpace(data))
 	if len(fields) == 0 {
@@ -739,7 +746,7 @@ func parseCSVMessage(server, data string) (ProScoreMessage, error) {
 	}
 
 	msg := ProScoreMessage{
-		Time:        time.Now().UnixMilli(), //)Now().Format(time.StampMilli),
+		Time:        time.Now().UnixMilli(),
 		Server:      server,
 		FullMessage: fields,
 	}
@@ -772,6 +779,7 @@ func parseCSVMessage(server, data string) (ProScoreMessage, error) {
 			msg.Club = stripQuotes(fields[6])
 		}
 		appendLog(fields[1])
+
 	case "PODIUM-SCORE":
 		msg.Status = "stopped"
 		if len(fields) > 1 {
@@ -787,19 +795,20 @@ func parseCSVMessage(server, data string) (ProScoreMessage, error) {
 			msg.Club = stripQuotes(fields[5])
 		}
 		if len(fields) > 7 {
-			msg.Score.Final = fields[7]
+			if f, err := strconv.ParseFloat(stripQuotes(fields[7]), 64); err == nil {
+				msg.FinalScore = f
+			}
 		}
-		
+
 	case "PODIUM-CLEAR":
 		msg.Status = "stopped"
 		if len(fields) > 1 {
 			msg.Apparatus = apparatus[fields[1]]
 		}
 
-	//  SCOREGEN-LAST,1,3(apparatus),42(competitornum),"Jane Smith",2(rotation?),2.0(E1),E2,E3,E4,E5,E6,D,E,ND,Final
+	// SCOREGEN-LAST,1,3(apparatus),42(competitornum),"Jane Smith",2,E1,E2,E3,E4,E5,E6,D,E,ND,Final
 	case "SCOREGEN-LAST":
 		msg.Status = "stopped"
-		//Ignoring whatever field 1 is
 		if len(fields) > 2 {
 			msg.Apparatus = apparatus[fields[2]]
 		}
@@ -807,39 +816,31 @@ func parseCSVMessage(server, data string) (ProScoreMessage, error) {
 			msg.Competitor = fields[3]
 		}
 		if len(fields) > 4 {
-			msg.Name = fields[4]
+			msg.Name = stripQuotes(fields[4])
 		}
-		//Ignoring whatever field 5 is
-		if len(fields) > 6 {
-			msg.Score.E1 = fields[6]
-		}
-		if len(fields) > 7 {
-			msg.Score.E2 = fields[7]
-		}
-		if len(fields) > 8 {
-			msg.Score.E3 = fields[8]
-		}
-		if len(fields) > 9 {
-			msg.Score.E4 = fields[9]
-		}
-		if len(fields) > 10 {
-			msg.Score.E5 = fields[10]
-		}
-		if len(fields) > 11 {
-			msg.Score.E6 = fields[11]
-		}
+		// fields[5] ignored
+		// Parse summary scores (D, E, ND, Final at positions 12–15).
 		if len(fields) > 12 {
-			msg.Score.D = fields[12]
+			if f, err := strconv.ParseFloat(fields[12], 64); err == nil {
+				msg.DScore = f
+			}
 		}
 		if len(fields) > 13 {
-			msg.Score.E = fields[13]
+			if f, err := strconv.ParseFloat(fields[13], 64); err == nil {
+				msg.EScore = f
+			}
 		}
 		if len(fields) > 14 {
-			msg.Score.ND = fields[14]
+			if f, err := strconv.ParseFloat(fields[14], 64); err == nil {
+				msg.ND = f
+			}
 		}
 		if len(fields) > 15 {
-			msg.Score.Final = fields[15]
+			if f, err := strconv.ParseFloat(fields[15], 64); err == nil {
+				msg.FinalScore = f
+			}
 		}
+
 	default:
 		msg.Status = "unknown"
 	}
@@ -847,8 +848,6 @@ func parseCSVMessage(server, data string) (ProScoreMessage, error) {
 	return msg, nil
 }
 
-// splitCSV splits a CSV line on commas that are not inside quoted fields,
-// replicating the regex: /,(?=(?:(?:[^"]*"){2})*[^"]*$)/
 func splitCSV(s string) []string {
 	var fields []string
 	var cur strings.Builder
@@ -870,7 +869,6 @@ func splitCSV(s string) []string {
 	return fields
 }
 
-// stripQuotes removes surrounding double-quotes from a field value.
 func stripQuotes(s string) string {
 	return strings.ReplaceAll(s, `"`, "")
 }
@@ -933,7 +931,6 @@ func xmlNodeToMap(decoder *xml.Decoder) (map[string]any, error) {
 
 // ── HTTP forwarding ───────────────────────────────────────────────────────────
 
-// httpClient skips TLS certificate verification — needed for self-signed certs
 var httpClient = &http.Client{
 	Transport: &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
@@ -1017,32 +1014,32 @@ func promptEndpointChange() {
 		promptingMu.Unlock()
 	}()
 
-	appendLog("⚠  10+ consecutive failures — prompting for new endpoint")
+	appendLog("⚠  10+ consecutive failures — prompting for new Video Server")
 
 	endpointMu.RLock()
 	current := httpEndpoint
 	endpointMu.RUnlock()
 
 	if !guiYesNo("Send Failures",
-		fmt.Sprintf("10+ consecutive send failures.\nCurrent endpoint: %s\n\nChange endpoint now?", current)) {
+		fmt.Sprintf("10+ consecutive send failures.\nCurrent Video Server: %s\n\nChange Video Server now?", current)) {
 		stats.mu.Lock()
 		stats.consecutiveFails = 0
 		stats.mu.Unlock()
-		appendLog("Keeping current endpoint.")
+		appendLog("Keeping current Video Server.")
 		return
 	}
 
 	var newEndpoint string
-	if guiYesNo("Change Endpoint", "Search via mDNS?\n\nYes = mDNS\nNo = Enter manually") {
+	if guiYesNo("Change Video Server", "Search via mDNS?\n\nYes = mDNS\nNo = Enter manually") {
 		newEndpoint = searchMDNS()
 	}
 	if newEndpoint == "" {
-		newEndpoint = guiInputBox("New Endpoint", "Enter HTTP endpoint URL:", current)
+		newEndpoint = guiInputBox("New Video Server", "Enter Video Server URL:", current)
 	}
 
 	if newEndpoint == "" ||
-		(!strings.HasPrefix(newEndpoint, "http://") && !strings.HasPrefix(newEndpoint, "https://")) {
-		appendLog("Invalid/empty endpoint — keeping current.")
+		(!strings.HasPrefix(newEndpoint, "http://")) {
+		appendLog("Invalid/empty Video Server — keeping current.")
 		stats.mu.Lock()
 		stats.consecutiveFails = 0
 		stats.mu.Unlock()
@@ -1056,7 +1053,7 @@ func promptEndpointChange() {
 	stats.consecutiveFails = 0
 	stats.mu.Unlock()
 	updateURLDisplay()
-	appendLog("Endpoint updated: " + newEndpoint)
+	appendLog("Video Server updated: " + newEndpoint)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1074,23 +1071,27 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%02d:%02d", m, s)
 }
 
-// -- Get scores from the Ipad interface --
+// ── ProScore HTTP API ─────────────────────────────────────────────────────────
+
 type CompetitorInfo struct {
-	Num        int
-	FirstName  string
-	LastName   string
-	Gym        string
-	Level      string
-	Session    string
-	Score1     *float64
+	Num         int
+	FirstName   string
+	LastName    string
+	Gym         string
+	Level       string
+	Session     string
+	Score1      *float64
 	StartValue1 *float64
-	EScore1    *float64
-	Adjust1    *float64
-	Score2     *float64
+	EScore1     *float64
+	Adjust1     *float64
+	Score2      *float64
 	StartValue2 *float64
-	EScore2    *float64
-	Adjust2    *float64
+	EScore2     *float64
+	Adjust2     *float64
 }
+
+// apparatusKeypadIDMu guards runtime updates to apparatusKeypadID.
+var apparatusKeypadIDMu sync.Mutex
 
 func nullableFloat(s string) *float64 {
 	f, err := strconv.ParseFloat(s, 64)
@@ -1100,6 +1101,10 @@ func nullableFloat(s string) *float64 {
 	return &f
 }
 
+// parseProScoreResponse parses the semicolon-delimited key=value format used by
+// the ProScore HTTP API. String values use the length-prefixed quoted form:
+//
+//	FName:S=6"Alyssa"
 func parseProScoreResponse(body string) map[string]string {
 	fields := make(map[string]string)
 	tokens := strings.Split(body, ";")
@@ -1115,13 +1120,12 @@ func parseProScoreResponse(body string) map[string]string {
 		keypart := tok[:eq]
 		valpart := tok[eq+1:]
 
-		// strip :TYPE from key
 		key := keypart
 		if colon := strings.Index(keypart, ":"); colon != -1 {
 			key = keypart[:colon]
 			typePart := keypart[colon+1:]
 			if typePart == "S" {
-				// S=count"value" — extract using length prefix
+				// S=<length>"<value>" — extract using the length prefix
 				if q := strings.Index(valpart, `"`); q != -1 {
 					length, err := strconv.Atoi(valpart[:q])
 					if err == nil && q+1+length <= len(valpart) {
@@ -1145,45 +1149,134 @@ func parseCompetitorResponse(body string) (*CompetitorInfo, error) {
 	info := &CompetitorInfo{}
 	for k, v := range fields {
 		switch k {
-		case "Num":          info.Num, _ = strconv.Atoi(v)
-		case "FName":        info.FirstName = v
-		case "LName":        info.LastName = v
-		case "Gym":          info.Gym = v
-		case "Level":        info.Level = v
-		case "Session":      info.Session = v
-		case "Ave_Score1":   info.Score1 = nullableFloat(v)
-		case "Start_Value1": info.StartValue1 = nullableFloat(v)
-		case "EScore1":      info.EScore1 = nullableFloat(v)
-		case "Adjust1":      info.Adjust1 = nullableFloat(v)
-		case "Ave_Score2":   info.Score2 = nullableFloat(v)
-		case "Start_Value2": info.StartValue2 = nullableFloat(v)
-		case "EScore2":      info.EScore2 = nullableFloat(v)
-		case "Adjust2":      info.Adjust2 = nullableFloat(v)
+		case "Num":
+			info.Num, _ = strconv.Atoi(v)
+		case "FName":
+			info.FirstName = v
+		case "LName":
+			info.LastName = v
+		case "Gym":
+			info.Gym = v
+		case "Level":
+			info.Level = v
+		case "Session":
+			info.Session = v
+		case "Ave_Score1":
+			info.Score1 = nullableFloat(v)
+		case "Start_Value1":
+			info.StartValue1 = nullableFloat(v)
+		case "EScore1":
+			info.EScore1 = nullableFloat(v)
+		case "Adjust1":
+			info.Adjust1 = nullableFloat(v)
+		case "Ave_Score2":
+			info.Score2 = nullableFloat(v)
+		case "Start_Value2":
+			info.StartValue2 = nullableFloat(v)
+		case "EScore2":
+			info.EScore2 = nullableFloat(v)
+		case "Adjust2":
+			info.Adjust2 = nullableFloat(v)
 		}
 	}
 	return info, nil
 }
-func GetCompetitorInfoByHTTP(num, group int) (*CompetitorInfo, error) {
-	body := fmt.Sprintf(
-		`FC=getcompnum;RE=5;ID:S=2"01";Batt:S=4"100%%";Version:S=6"5.0.13";Num:I=%d;Group:I=%d;`,
-		num, group,
-	)
 
-	url := fmt.Sprintf("http://127.0.0.1:51514/proscore", host)
+// proScoreHTTPPost sends a plain-text request body to the local ProScore HTTP
+// endpoint and returns the raw response body.
+func proScoreHTTPPost(body string) (string, error) {
+	const url = "http://127.0.0.1:51514/proscore"
 	resp, err := http.Post(url, "text/plain", strings.NewReader(body))
 	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
+		return "", fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
+		return "", fmt.Errorf("unexpected status: %d", resp.StatusCode)
 	}
-
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("reading response: %w", err)
+		return "", fmt.Errorf("reading response: %w", err)
+	}
+	return string(raw), nil
+}
+
+// proScoreInit sends a single init request for the given keypadID and returns
+// the Event name reported by ProScore, or an error if the HTTP request fails.
+func proScoreInit(keypadID string) (string, error) {
+	body := fmt.Sprintf(
+		`FC=init;RE=4;ID:S=%d"%s";Batt:S=2"AK";Version:S=11"VideoReview";Cmd:S=4"init";`,
+		len(keypadID), keypadID,
+	)
+	raw, err := proScoreHTTPPost(body)
+	if err != nil {
+		return "", err
+	}
+	return parseProScoreResponse(raw)["Event"], nil
+}
+
+// findKeypadID returns the keypad ID for apparatusName, trying the cached value
+// first and, if that fails, scanning all two-hex-digit IDs 00–ff.  Any newly
+// discovered apparatus→ID mappings are persisted in apparatusKeypadID so future
+// calls avoid the scan.
+func findKeypadID(apparatusName string) (string, error) {
+	// Fast path: try the currently-cached ID.
+	apparatusKeypadIDMu.Lock()
+	knownID := apparatusKeypadID[apparatusName]
+	apparatusKeypadIDMu.Unlock()
+
+	if knownID != "" {
+		event, err := proScoreInit(knownID)
+		if err == nil && event == apparatusName {
+			return knownID, nil
+		}
+		appendLog(fmt.Sprintf("Keypad ID %q for %q failed (got %q), scanning 00–ff…", knownID, apparatusName, event))
 	}
 
-	return parseCompetitorResponse(string(raw))
+	// Slow path: scan 00–ff.
+	for i := 0; i <= 0xff; i++ {
+		candidate := fmt.Sprintf("%02x", i)
+		event, err := proScoreInit(candidate)
+		if err != nil {
+			continue // transient error, skip
+		}
+		if event != "" {
+			// Persist every mapping we discover, not just the target apparatus.
+			apparatusKeypadIDMu.Lock()
+			apparatusKeypadID[event] = candidate
+			apparatusKeypadIDMu.Unlock()
+			appendLog(fmt.Sprintf("Discovered keypad ID %q → %q", candidate, event))
+		}
+		if event == apparatusName {
+			return candidate, nil
+		}
+	}
+
+	return "", fmt.Errorf("no keypad ID found for apparatus %q after scanning 00–ff", apparatusName)
+}
+
+// GetCompetitorInfoByHTTP fetches detailed competitor scores from the local
+// ProScore HTTP API using a two-step init + getcompnum flow.
+//
+// If the known keypad ID for apparatusName returns the wrong Event, all IDs
+// 00–ff are tried and the mapping is updated for future calls.  If none match,
+// (nil, err) is returned and the caller should leave the ProScoreMessage unchanged.
+func GetCompetitorInfoByHTTP(num string, group int, apparatusName string) (*CompetitorInfo, error) {
+	// ── Step 1: find (and verify) the keypad ID ───────────────────────────────
+	keypadID, err := findKeypadID(apparatusName)
+	if err != nil {
+		return nil, err
+	}
+
+	// ── Step 2: getcompnum ────────────────────────────────────────────────────
+	compBody := fmt.Sprintf(
+		`FC=getcompnum;RE=5;ID:S=%d"%s";Batt:S=2"AK";Version:S=11"VideoReview";Num:I=%s;Group:I=%d;`,
+		len(keypadID), keypadID, num, group,
+	)
+	compRaw, err := proScoreHTTPPost(compBody)
+	if err != nil {
+		return nil, fmt.Errorf("getcompnum request: %w", err)
+	}
+
+	return parseCompetitorResponse(compRaw)
 }
