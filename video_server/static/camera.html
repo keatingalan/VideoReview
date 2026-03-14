@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="utf-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+
+	<title>Competition Video Recording</title>
+
+	<style>
+		@font-face {
+			font-family: "DM Sans";
+			src: url('/DMSans-VariableFont_opsz,wght.ttf') format("truetype-variations");
+		}
+		body {
+			font-family:"DM Sans", sans-serif; 
+			font-size: 80%;
+			background-color: rgb(162, 172, 182);
+		}
+		body.recording {background-color: rgb(202, 60, 60);}
+		video {
+				  position: fixed;
+				  height: calc(100% - 12em);
+				  width: 98vw;
+				  left:1vw;
+				  background-color: grey;
+				  margin-bottom: 3em;
+		}
+		input { text-align: center;	}
+		div#clock {font-size:85%; text-align:center; width: 6em;}	
+		button {text-align: center;  border-radius:0.5em; }
+		button#startStop {text-align: center; width:12em; height: 1.6em; font-size:125%; border-radius:1em; transition: border-width 0.2s ease, box-shadow 0.2s ease;}
+		button#startStop:hover { box-shadow: 0 0 5px teal; }
+		select#cameralist {float:right; width:40vw; height: 1.4em}
+		input#description {width: 24em; height: 1.4em; }
+		select#audiolist {width:40vw; height: 1.4em}
+		input#server {width: 8em;margin-right:2em;}
+		select#apparatus {width: 8em; font-size: 120%;text-align:center}
+		div#headerrow {display:flex; justify-content: space-between; align-items: center;}
+		h1#heading {text-align: left; margin-top:8px; margin-bottom: 8px;}
+		div#progress {position: fixed; bottom:2px; left:5vw; height: 3em; overflow-y: auto; vertical-align: middle; padding-top:2px;}
+		div#uploadZip {position: fixed; bottom:0px; right:5vw; height: 3em; overflow-y: auto;}
+		div#uploadZip input {max-width: 30vw; max-height:2em;}
+		@keyframes flash-animation {
+			0% { background-color: yellow; }
+			100% { background-color: rgb(162, 172, 182); }
+		}
+		.flashing {animation: flash-animation 1s infinite alternate;}
+	</style>
+	<script src="EBML.js"></script>
+	<script src="jszip.js"></script>
+</head>
+
+<body id='body'>
+	<div id='setupFields'>
+		<select id='cameralist'></select>
+		<select id='audiolist'><option value='none'>None</option></select>
+		<hr />
+		<label for="description">Camera Description</label><input id="description" type="text" value="" placeholder="A unique description of this camera's subject" />
+	</div>
+	<div id='headerrow'>
+		<h1 id="heading">Loading</h1>
+		<button onclick='startStopRecorder()' id='startStop'>&#9679; Start Recording</button>
+		<div id='clock' style='font-size: 1.5em'>&nbsp;</div>
+	</div>
+	<div id='videoContainer'>
+		<video id='videoPlayer' autoplay='true' playsinline muted="true"></video>
+	</div>
+	<div id='progress'>
+		<progress id="uploadProgress" max="100" value="0"></progress>
+		<label for="uploadProgress" id="uploadProgressLabel">Upload remaining</label>
+	</div>
+	<div id="uploadZip">
+		<label style="font-size: 80%;">Load zip file of videos that failed to upload 
+			<br />
+			<input id='zipfile' type='file' />
+		</label>
+	</div>
+
+</body>
+<script>
+var videoElement = document.querySelector('#videoPlayer');
+var audioSelect = document.querySelector('select#audiolist');
+var videoSelect = document.querySelector('select#cameralist');
+
+
+audioSelect.onchange = onAudioChange;
+videoSelect.onchange = getStream;
+
+function onAudioChange() {
+  // Preserve the user's selection before getStream/gotStream can overwrite it
+  var selectedAudioValue = audioSelect.value;
+  var selectedAudioIndex = audioSelect.selectedIndex;
+  getStream().then(function() {
+    // Restore the user's chosen audio device after gotStream resets selectedIndex
+    if (selectedAudioValue !== 'none' && selectedAudioIndex >= 0) {
+      audioSelect.selectedIndex = selectedAudioIndex;
+    }
+  });
+}
+
+getStream().then(getDevices).then(gotDevices);
+
+function getDevices() {
+  // AFAICT in Safari this only gets default devices until gUM is called :/
+  return navigator.mediaDevices.enumerateDevices();
+}
+
+function gotDevices(deviceInfos) {
+  window.deviceInfos = deviceInfos; // make available to console
+  console.log('Available input and output devices:', deviceInfos);
+  for (const deviceInfo of deviceInfos) {
+    const option = document.createElement('option');
+    option.value = deviceInfo.deviceId;
+    if (deviceInfo.kind === 'audioinput') {
+      option.text = deviceInfo.label || `Microphone ${audioSelect.length + 1}`;
+      audioSelect.appendChild(option);
+    } else if (deviceInfo.kind === 'videoinput') {
+      option.text = deviceInfo.label || `Camera ${videoSelect.length + 1}`;
+      videoSelect.appendChild(option);
+    }
+  }
+}
+
+function getStream() {
+  if (window.stream) {
+    window.stream.getTracks().forEach(track => {
+      track.stop();
+    });
+  }
+  const audioSource = audioSelect.value;
+  const videoSource = videoSelect.value;
+  const constraints = {
+    audio: (audioSource && audioSource !== 'none')
+      ? {deviceId: {exact: audioSource}}
+      : (audioSource === 'none' ? false : true),
+    video: {deviceId: videoSource ? {exact: videoSource} : undefined}
+  };
+  return navigator.mediaDevices.getUserMedia(constraints).then(gotStream).catch(handleError);
+}
+
+function gotStream(stream) {
+  window.stream = stream; // make stream available to console
+  const audioTracks = stream.getAudioTracks();
+  if (audioTracks.length > 0) {
+    try {
+      const matchIndex = [...audioSelect.options].
+        findIndex(option => option.text === audioTracks[0].label);
+      if (matchIndex >= 0) audioSelect.selectedIndex = matchIndex;
+    } catch (e) { /* leave audioSelect as user set it */ }
+  }
+  const videoTracks = stream.getVideoTracks();
+  if (videoTracks.length > 0) {
+    videoSelect.selectedIndex = [...videoSelect.options].
+      findIndex(option => option.text === videoTracks[0].label);
+  }
+  videoElement.srcObject = stream;
+  	//set up exporter
+	if (MediaRecorder.isTypeSupported('video/webm')) {
+		// video/webm is recommended for non IOS devices
+		var options = {mimeType: 'video/webm; codecs="vp9,opus"', videoBitsPerSecond : 1000000};
+	} else {
+		// IOS does not support webm! So you have to use mp4.
+		var options = {mimeType: 'video/mp4', videoBitsPerSecond : 1000000};
+	}
+	exportRecorder = new MediaRecorder(stream,options)
+	exportRecorder2 = new MediaRecorder(stream,options)
+	document.getElementById('heading').innerHTML="Ready"
+	exportRecorder.addEventListener('start',(e)=>{exportRecorder2.stop()}) //Stop the other recorder when this one starts
+	exportRecorder2.addEventListener('start',(e)=>{exportRecorder.stop()}) //Stop the other recorder when this one starts
+}
+
+function handleError(error) {
+  console.error('Error: ', error);
+}
+
+function hasGetUserMedia() {
+	return !!(//navigator.mediaDevices &&
+		navigator.mediaDevices.getUserMedia);
+}
+
+var exportRecorder,exportRecorder2
+
+setInterval(updateScreen,500);
+function updateScreen() {
+	time=new Date()
+	document.getElementById("clock").innerHTML=time.toTimeString().substr(0,8)
+}
+
+function logStatus(message) {
+	console.log(message,new Date())
+}
+var numFiles
+var timer
+const recordingLength=30000 //ms
+var recorder1start
+var recorder2start
+var filename_prefix="video"
+function startStopRecorder() {
+	if(exportRecorder.state=='recording'||exportRecorder2.state=='recording') {
+		window.clearInterval(timer)
+		exportRecorder.stop()
+		exportRecorder2.stop()
+		document.getElementById('startStop').innerHTML="&#9679; Start Recording"
+		document.getElementById('heading').innerHTML="Ready"
+		try {document.getElementById('body').classList.remove('recording')} catch(e) {}
+		document.getElementById('setupFields').hidden=false
+	} else {
+		if(document.getElementById('description').value=='') {alert('No description entered - must be unique at this time');return;}
+		exportRecorder.addEventListener('start', (e)=>{recorder1start=e.timeStamp})
+		exportRecorder2.addEventListener('start', (e)=>{recorder2start=e.timeStamp})
+		filename_prefix=document.getElementById('description').value.replace("!","")+"!"//+Date.now()//+"+"+recordingLength+"x"
+		numFiles=0
+		exportRecorder.start()//recordingLength) //Make it in short chunks
+		timer=window.setInterval(swapRecorders,recordingLength)
+		//window.setTimeout(swapRecorders,2000) //Make 2s chunk first to test before walking away
+		document.getElementById('startStop').innerHTML="&#9632; Stop Recording"
+		document.getElementById('heading').innerHTML="Recording"// "+filename_prefix
+		exportRecorder.addEventListener('dataavailable', (e)=>{downloadExportRecording(e.data,e.timeStamp-recorder1start)})
+		exportRecorder2.addEventListener('dataavailable', (e)=>{downloadExportRecording(e.data,e.timeStamp-recorder2start)})
+		document.getElementById('body').classList.add('recording')	
+		document.getElementById('setupFields').hidden=true
+	}
+}
+function swapRecorders() {
+	if(exportRecorder.state=='recording') {
+		//Stop recorder 1 and start 2
+		exportRecorder2.start()
+	} else if(exportRecorder2.state=='recording') {
+		exportRecorder.start()
+	}
+}
+
+async function downloadExportRecording(data,length) {
+	var date=new Date()
+	var filename
+	var filetype
+	var duration
+	if (MediaRecorder.isTypeSupported('video/webm')) {
+		filetype='video/webm'
+		//Add header type info for making seekable
+		data=await getSeekableBlobAsync(data)
+		filename=filename_prefix+Date.now()+"!"+Math.round(length)+".webm"
+		
+	} else {
+		filename=filename_prefix+Date.now()+"!"+Math.round(length)+".mp4"
+		filetype='video/mp4'
+	}
+	uploadByChunking(new Blob([data],{type: filetype}), filename)
+	numFiles=numFiles+1
+}
+
+async function upload(file,filename) {
+	const formData = new FormData();
+	formData.append('video', file, filename)
+	const response=await fetch("/upload", {
+		method: 'POST',
+		cache: 'no-cache',
+		body: formData 
+	})
+	console.log("Upload of "+filename+" : "+response.statusText)
+}
+
+document.getElementById('uploadProgress').hidden=true
+document.getElementById('uploadProgressLabel').hidden=true
+
+//Chunk upload functionality
+const chunkSize = 1024 * 1024 * 5 //5MB
+var chunksToUpload=[] //Array of bits to upload
+function uploadByChunking(file,filename) {
+	//Break file into chunks and add to queue
+	var to=0
+	var from=0
+	var chunkNo=0
+	const numChunks = Math.ceil(file.size / chunkSize)
+	console.log("numChunks",numChunks)
+	while(to<file.size) {
+		from = chunkNo * chunkSize;
+    	to = (chunkNo + 1) * chunkSize >= file.size ? file.size : from + chunkSize;
+		chunksToUpload.push({
+			filename: filename,
+			chunkNo: chunkNo,
+			numChunks: numChunks,
+			data: file.slice(from,to),
+			size: (to-from)
+		})
+		uploadSizeTotal=uploadSizeTotal+to-from
+		chunkNo=chunkNo+1
+	}
+	console.log(chunkNo)
+
+	//Start uploading if not in progress
+	if(chunkUploadStatus==0) uploadAChunk()
+	updateUploadStatus()
+}
+chunkUploadStatus=0 //0 = stopped, number = number of attempts at this chunk
+uploadStartTime=null
+uploadSizeTotal=0
+function uploadAChunk() {
+	document.getElementById('uploadProgressLabel').classList.remove('flashing')
+	if(chunksToUpload.length>0) {
+		if( uploadStartTime==null) uploadStartTime=Date.now()
+		updateUploadStatus()
+		chunkUploadStatus=chunkUploadStatus+1 //Add 1 to attempt count
+		// Set up the parameters for the request
+		const params = new URLSearchParams();
+		params.set('name', chunksToUpload[0].filename);
+		params.set('currentChunkIndex', chunksToUpload[0].chunkNo);
+		params.set('totalChunks', chunksToUpload[0].numChunks);
+
+		// Set up the headers for the request
+		const headers = { 'Content-Type': 'application/octet-stream' };
+		const url = '/uploadChunked?' + params.toString()
+
+		// Make the POST request to the server
+		fetch(url, {
+		method: 'POST',
+		headers: headers,
+		body: chunksToUpload[0].data
+		}).then(response => {
+			if(response.status="200") {
+				//Chunk uploaded successfully, try next one
+				chunksToUpload.shift() //Drop this from the array
+				chunkUploadStatus=0 //Mark as stopped
+				updateUploadStatus()
+				uploadAChunk()
+			} else {
+				console.log(response)
+				//Failed - try again
+				if(chunkUploadStatus<6) {
+					window.setTimeout(uploadAChunk,(10**chunkUploadStatus)/2) //Limit retries, and leave a bit longer gap each time
+				} else {
+					/*if(confirm("Uploading failed >5 attempts for one chunk. Retry?")) {
+						chunkUploadStatus=0
+						uploadAChunk() //Start again
+					} else {*/
+						document.getElementById('uploadProgressLabel').innerHTML="Uploading failed. <button onclick='uploadAChunk()'>Try again</button> or <button onclick='downloadRemainingChunksAsZip()'>Download data for later upload</button>"
+						document.getElementById('uploadProgressLabel').classList.add('flashing')
+						chunkUploadStatus=0 //Reset otherwise can never start uploading again!
+					//}
+				}
+			}
+		},err=>{
+			console.error(err)
+			//Failed - try again
+			if(chunkUploadStatus<6) {
+				uploadAChunk() //Limit retries
+			} else {
+				/*if(confirm("Uploading failed >5 attempts for one chunk. Retry?")) {
+					chunkUploadStatus=0
+					uploadAChunk() //Start again
+				} else {*/
+					document.getElementById('uploadProgressLabel').innerHTML="Uploading failed. <button onclick='uploadAChunk()'>Try again</button> or <button onclick='downloadRemainingChunksAsZip()'>Download data for later upload</button>"
+					document.getElementById('uploadProgressLabel').classList.add('flashing')
+					chunkUploadStatus=0 //Reset otherwise can never start uploading again!
+				//}
+			}
+		})
+	} else {
+		//reset queue size for progress bar
+		uploadSizeTotal=0
+		uploadStartTime=null
+		updateUploadStatus()
+	}
+}
+const updateUploadStatus=()=>{
+	document.getElementById('uploadProgress').classList.remove('flashing')
+	if(uploadSizeTotal<1 || chunksToUpload.length<1) {
+		document.getElementById('uploadProgress').hidden=true
+		//document.getElementById('uploadProgressLabel').hidden=true
+		document.getElementById('uploadProgress').value=100
+		document.getElementById('uploadProgressLabel').innerText="Upload progress: (done) "
+	} else {
+		document.getElementById('uploadProgress').hidden=false
+		document.getElementById('uploadProgressLabel').hidden=false
+		document.getElementById('uploadProgress').value=100-100*chunksToUpload.reduce((n, {size}) => n + size, 0)/uploadSizeTotal
+		document.getElementById('uploadProgressLabel').innerText="Upload progress: "+Math.round((chunksToUpload.reduce((n, {size}) => n + size, 0))/1024/1024)+"MB remaining of "+Math.round(uploadSizeTotal/1024/1024)+"MB"
+	}
+}
+async function getSeekableBlobAsync(blob) {
+	const arrayBuffer = await blob.arrayBuffer();
+    const reader = new EBML.Reader();
+    const decoder = new EBML.Decoder();
+    const tools = EBML.tools;
+
+    const ebmlElms = decoder.decode(arrayBuffer);
+    ebmlElms.forEach((element) => {
+        reader.read(element);
+    });
+    reader.stop();
+    const refinedMetadataBuf = tools.makeMetadataSeekable(reader.metadatas, reader.duration, reader.cues);
+    const body = arrayBuffer.slice(reader.metadataSize);
+    const newBlob = new Blob([refinedMetadataBuf, body], {
+        type: "video/webm",
+    });
+
+    return newBlob;
+}
+async function downloadRemainingChunksAsZip() {
+	//Need to join together chunks of the same file again then put into the zip
+	var files=Object.values(
+		chunksToUpload.reduce((acc, { filename, data }) => {
+			if (!acc[filename]) {
+				acc[filename] = { filename, data };
+			} else {
+				acc[filename].data = new Blob([acc[filename].data , data]);
+			}
+			return acc;
+		}, {})
+	)
+	var zip=new JSZip()
+	while (files.length>0) {
+		zip.file(files[0].filename,files[0].data)
+		files.shift()
+	}
+	zip.generateAsync({type:'blob'}).then((blob)=>{
+		//Download the zip
+		var url = URL.createObjectURL(blob);
+		var a = document.createElement("a");
+		document.body.appendChild(a);
+		a.style = "display: none";
+		a.href = url;
+		a.download = 'videos_failed_to_upload.zip';
+		a.click();
+		window.URL.revokeObjectURL(url);
+		chunksToUpload=[] //Empty the queue
+		updateUploadStatus() // Remove link to download
+	})
+}
+document.getElementById('zipfile').onchange=(e)=>{
+	//Function to add zip file contents to the upload queue
+	if(!confirm("Uploading the same zip file multiple times can lead to corruption - are you sure you wish to continue?")) {return;}
+	var files = e.target.files;
+    for (var i = 0; i < files.length; i++) {
+		JSZip.loadAsync(files[i]).then(function(zip) {
+			document.getElementById('zipfile').hidden=true
+			document.getElementById('uploadProgress').hidden=false
+			document.getElementById('uploadProgressLabel').hidden=false
+			zip.forEach(function (relativePath, zipEntry) {  
+				//Add each file from the zip to the upload queue
+				zipEntry.async('blob').then((file)=>{uploadByChunking(file,relativePath)}) //Relies on correct zip file format, right file names, no directories inside
+			})
+		})
+    }
+}
+</script>
+</html>

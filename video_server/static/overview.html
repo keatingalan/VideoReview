@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="utf-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+
+	<title>Competition Videos</title>
+	<script src="/vis-timeline-graph2d.min.js"></script>
+    <link href="/vis-timeline-graph2d.min.css" rel="stylesheet" type="text/css" />
+    <style>
+        @font-face {
+			font-family: "DM Sans";
+			src: url('/DMSans-VariableFont_opsz,wght.ttf') format("truetype-variations");
+		}
+	    body {
+			font-family:"DM Sans", sans-serif; 
+			background-color: rgb(233, 233, 233);
+		}
+		
+		div#clock {font-size:85%; text-align:center;}
+        table {
+            width: 100%;
+            min-height: 10em;
+            /*max-height: 55vh;*/
+            overflow-y: scroll;
+            overflow-x: ellipsis;
+            vertical-align: top;
+        }
+        td#logcolumn {width: 40vw;min-width:30em;max-height: 30em;}
+        table#table {font-size: 60%;}
+        /* ── Tabbed panel ── */
+        .tab-panel {
+            flex: 1 1 68%;
+            min-width: 300px;
+            display: flex;
+            flex-direction: column;
+        }
+        .tab-bar {
+            display: flex;
+            gap: 0;
+            border-bottom: 2px solid #444;
+        }
+        .tab-btn {
+            padding: 6px 18px;
+            border: none;
+            border-bottom: none;
+            background: #ccc;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.95em;
+            border-radius: 6px 6px 0 0;
+            margin-right: 3px;
+            color: #333;
+        }
+        .tab-btn.active {
+            background: #444;
+            color: #fff;
+        }
+        .tab-pane { display: none; }
+        .tab-pane.active { display: flex; flex-direction: column; }
+
+        /* video pane */
+        #pane-video {
+            position: relative;
+        }
+        #pane-video video {
+            width: 100%;
+            height: 50vh;
+            min-height: 150px;
+            background: darkgrey;
+            display: block;
+        }
+
+        /* Overlay toolbar — top-right of the video, fades in on hover */
+        #video-btn-toolbar {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            z-index: 10;
+            display: flex;
+            flex-direction: row;
+            gap: 6px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+        }
+        #pane-video:hover #video-btn-toolbar { opacity: 1; pointer-events: auto; }
+
+        #record-btn {
+            display: none;               /* hidden until state classes applied */
+            align-items: center;
+            gap: 5px;
+            padding: 5px 11px;
+            background: rgba(0,0,0,0.25);
+            color: rgba(255,255,255,0.85);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 0.85em;
+            cursor: pointer;
+            backdrop-filter: blur(3px);
+            transition: background 0.15s;
+        }
+        #record-btn:hover { background: rgba(0,0,0,0.6); color: #fff; }
+        #record-btn.ready     { display: flex; }
+        #record-btn.recording:hover { background: rgba(160,0,0,0.6); color: #fff; }
+        #record-btn.recording {
+            display: flex;
+            background: rgba(160,0,0,0.35);
+            border-color: rgba(255,80,80,0.5);
+            animation: rec-pulse 1s ease-in-out infinite;
+        }
+        @keyframes rec-pulse {
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0.5; }
+        }
+
+        /* event table pane */
+        #pane-scores {
+            overflow-x: auto;
+            max-height: 50vh;
+            overflow-y: auto;
+        }
+        #score-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 85%;
+        }
+        #score-table th {
+            background: #444;
+            color: #fff;
+            padding: 6px 10px;
+            text-align: left;
+            position: sticky;
+            top: 0;
+        }
+        #score-table td {
+            padding: 5px 10px;
+            border-bottom: 1px solid #ccc;
+        }
+        #score-table tr:nth-child(even) td { background: #f0f0f0; }
+        #score-table tr:hover td { background: #dce8ff; }
+        .status-competing { color: darkgreen; font-weight: bold; }
+        .status-stopped   { color: darkred; }
+        .status-scoring   { color: darkorange; }
+
+		/*For colouring the start/stop boxes on the timeline*/
+        .vis-item.stopped {
+            background-color: red;
+            border-color: darkred;
+            color: white;
+        }
+        .vis-item.competing {
+            background-color: green;
+            border-color: darkgreen;
+            color: white;
+        }
+        .vis-item {
+            font-size: 80%;
+        }
+        #timeline { font-size: 80%; }
+        img {height: 12em;}
+        h1#heading {margin: 10px 0px 10px 0px }
+        .flex-layout {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            gap: 1%;
+            margin-bottom: 1em;
+        }
+
+        .video-column {
+            flex: 1 1 68%;
+            min-width: 300px;
+        }
+
+        .control-column {
+            flex: 1 1 30%;
+            min-width: 16em;
+            display: flex;
+            flex-direction: column;
+            justify-content:space-around;
+            gap: 0.5em;
+        }
+        #loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            min-height: 60px;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .spinner {
+            border: 6px solid #f3f3f3;
+            border-top: 6px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+	</style>
+
+
+</head>
+
+<body id='body'>
+    <div class="flex-layout">
+        <div class="control-column">
+            <h1 id="heading">Competition videos</h1>
+	        <div id='clock' style='font-size: 1.5em'></div>
+	
+            <button onclick="alert('To play back video, find the time desired, and select the appropriate blocks of video footage (on touch screens, tap the start and long hold the end; on computer, click the first then hold shift to click the end). Then click the Load and Play button.\nTo download/save part of a video, click the Record button at the top right during playback.')"><svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px" fill="#1f1f1f"><path d="M480-240q20 0 34-14t14-34q0-20-14-34t-34-14q-20 0-34 14t-14 34q0 20 14 34t34 14Zm-36-153h73q0-37 6.5-52.5T555-485q35-34 48.5-58t13.5-53q0-55-37.5-89.5T484-720q-51 0-88.5 27T343-620l65 27q9-28 28.5-43.5T482-652q28 0 46 16t18 42q0 23-15.5 41T496-518q-35 32-43.5 52.5T444-393Zm36 297q-79 0-149-30t-122.5-82.5Q156-261 126-331T96-480q0-80 30-149.5t82.5-122Q261-804 331-834t149-30q80 0 149.5 30t122 82.5Q804-699 834-629.5T864-480q0 79-30 149t-82.5 122.5Q699-156 629.5-126T480-96Zm0-72q130 0 221-91t91-221q0-130-91-221t-221-91q-130 0-221 91t-91 221q0 130 91 221t221 91Zm0-312Z"/></svg>Help</button>
+            <button onclick="showImageModal('/cameraQR','')">Camera QR code <svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px" fill="#1f1f1f"><path d="M288-336h288v-21q0-39.06-39.6-63.03T432-444q-64 0-104 23.97T288-357v21Zm144.5-144q29.49 0 50.5-21.5 21-21.5 21-51 0-29.49-21-50.5-21.01-21-50.5-21-29.5 0-51 21-21.5 21.01-21.5 50.5 0 29.5 21.5 51t51 21.5ZM216-192q-29 0-50.5-21.5T144-264v-432q0-29.7 21.5-50.85Q187-768 216-768h432q29.7 0 50.85 21.15Q720-725.7 720-696v168l144-144v384L720-432v168q0 29-21.15 50.5T648-192H216Zm0-72h432v-432H216v432Zm0 0v-432 432Z"/></svg></button>
+            <button onclick="showImageModal('/overviewQR','overview')">Viewer QR code <svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px" fill="#1f1f1f"><path d="M264-192q-10.2 0-17.1-6.9-6.9-6.9-6.9-17.1v-24h-96q-19.8 0-33.9-14.1Q96-268.2 96-288v-432q0-19.8 14.1-33.9Q124.2-768 144-768h672q19.8 0 33.9 14.1Q864-739.8 864-720v432q0 19.8-14.1 33.9Q835.8-240 816-240h-96v23.86q0 10.14-6.9 17.14t-17.1 7H264Zm-120-96h672v-432H144v432Zm96-98h480L566-591 445.89-437.25l-85.78-102.5L240-386Zm-96 98v-432 432Z"/></svg></button>
+            <button onclick="setTimelineWindow()">Zoom to day</button>
+            <label style="float:right">
+                Event to find: <input id="eventdesc" type="text" onkeydown="if (event.key === 'Enter') {findEvent();}" />
+                <button onclick="findEvent()"><svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px" fill="#1f1f1f"><path d="M765-144 526-383q-30 22-65.79 34.5-35.79 12.5-76.18 12.5Q284-336 214-406t-70-170q0-100 70-170t170-70q100 0 170 70t70 170.03q0 40.39-12.5 76.18Q599-464 577-434l239 239-51 51ZM384-408q70 0 119-49t49-119q0-70-49-119t-119-49q-70 0-119 49t-49 119q0 70 49 119t119 49Z"/></svg></button>
+            </label>
+            <button onclick='refreshVideos()'>
+                <svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px" fill="#1f1f1f"><path d="M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-110h80v280H520v-80h168q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q77 0 139-44t87-116h84q-28 106-114 173t-196 67Z"/></svg>
+                Refresh timeline
+            </button>
+            <label style="float:right">Date to review: <input id="date" type="date" onchange="setTimelineWindow()" /></label>
+            <button onclick="playbackSelected()">
+                <svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px" fill="#1f1f1f"><path d="m380-300 280-180-280-180v360ZM480-80q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/></svg>
+                Load &amp; Play selected
+            </button>
+        </div>
+        <div class="tab-panel">
+            <div class="tab-bar">
+                <button class="tab-btn active" onclick="switchTab('scores')">&#x1F4CB; Recent scores</button>
+                <button class="tab-btn" onclick="switchTab('video')">&#x25B6; Video <span id='videodesc'></span></button>
+                
+            </div>
+            <div id="pane-scores" class="tab-pane active">
+                <table id="score-table">
+                    <thead>
+                        <tr>
+                            <th>Apparatus</th>
+                            <th>#</th>
+                            <th>Name</th>
+                            <th>D</th>
+                            <th>E</th>
+                            <th>ND</th>
+                            <th>Final</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody id="score-table-body">
+                        <tr><td colspan="8" style="color:#888;font-style:italic">Loading scores...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div id="pane-video" class="tab-pane">
+                <video id="player" autoplay controls poster="instructions.jpeg"></video>
+                <div id="video-btn-toolbar">
+                    <button id="record-btn" onclick="toggleClipRecording()" title="Record a clip">
+                        <svg id="record-icon" xmlns="http://www.w3.org/2000/svg" height="14px" viewBox="0 -960 960 960" width="14px" fill="currentColor"><circle cx="480" cy="-480" r="200"/><path d="M480-80q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/></svg>
+                        <span id="record-btn-label">Rec</span>
+                    </button>
+                </div>
+            </div>
+            
+        </div>
+        
+    </div>
+    <div id="timeline-wrapper" style="position:relative;">
+        <div id="loading-overlay"><div class="spinner"></div></div>
+        <div id="timeline"></div>
+    </div>
+    
+	<!-- Image Modal -->
+    <div id="imageModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.7); justify-content:center; align-items:center; flex-direction:column; z-index:1000;">
+		<img id="modalImage" style="max-width:90vw; max-height:80vh; border-radius:8px; box-shadow: 0 0 15px black;" />
+		<p id="modalCaption" style="background-color:white; margin-top:2em; padding:1em; text-align:center; max-width:90vw;border-radius:8px; box-shadow: 0 0 15px black;"></p>
+	</div>
+</body>
+<script type="text/javascript" src="/mediainfo.js"></script>
+
+<script>
+    setInterval(updateScreen,200);
+    function updateScreen() {
+        time=new Date()
+        document.getElementById("clock").innerHTML=time.toTimeString().substr(0,8)
+        if (playbackStartTime != null) {
+            timeline.setCustomTime(new Date(Number(playbackStartTime)+document.getElementById('player').currentTime*1000))
+        } else {
+            try{timeline.removeCustomTime()} catch(e){}
+        }
+    }
+    var xhr = new XMLHttpRequest();
+    xhr.onreadystatechange = function() {
+        if (this.readyState == 4 && this.status == 200) {
+            var addresses=JSON.parse(xhr.responseText)
+            var interfaces=Object.keys(addresses)
+            var address_string=''
+            if(interfaces.length==1) {
+                address_string='https://'+addresses[interfaces[0]]+':3000/'
+            } else {
+                for(var i=0;i<interfaces.length;i++) {
+                    address_string=(i==0?'':address_string+' or ')+'https://'+addresses[interfaces[i]]+':3000/'+' ('+interfaces[i]+')'
+                }
+            }
+        }
+    };
+    xhr.open("GET", "/ip", true);
+    xhr.send();
+    refreshVideos=()=>{
+        document.getElementById('loading-overlay').style.display = 'flex'
+        //Now put in the events:
+        fetch('/eventlist')
+        .then(data=>data.json())
+        .then(data=> { 
+            //Clear out timeline
+            items.clear()
+            groups.clear()
+            //Add standard apparatus so they're in order
+            groups.add({ id:"E|Vault", content:"Vault" })
+            groups.add({ id:"E|Bars", content:"Bars" })
+            groups.add({ id:"E|Beam", content:"Beam" })
+            groups.add({ id:"E|Floor", content:"Floor" })
+            //start fetching videos
+            fetch('/videolist')
+            .then(data=>data.json())
+            .then(data=> { 
+                if (data!=null) {
+                    data.forEach(v=>{
+                        try{
+                            groups.add({
+                                id:"V|"+v.camera_desc,
+                                content:v.camera_desc
+                            })
+                        } catch(e) {/*ignore - probably just duplicate category*/}
+                        items.add({
+                            id:v.filename,
+                            group:"V|"+v.camera_desc,
+                            start:new Date(v.start_time),
+                            end:new Date(v.start_time+v.length)
+                        })
+                    })
+                    data.forEach(m=>{
+                        try{
+                            groups.add({
+                                id:"E|"+m.apparatus,
+                                content:m.apparatus
+                            })
+                        } catch(e) {/*ignore - probably just duplicate category*/}
+                        items.add({
+                            id:m.time+m.server+m.apparatus,
+                            group:"E|"+m.apparatus,
+                            start:m.time,
+                            type:'box',
+                            className: m.status,
+                            content: 
+                                (m.status=='competing'?"&#x25B6;":(m.status='stopped'?"&#x25A0;":""))+
+                                '<small> '+m.competitor+" ("+m.club+") <br />"+m.firstName+' '+m.surname+'</small>'
+                        })
+                    })
+                }
+            })
+            setTimeout(()=>{
+				document.getElementById('loading-overlay').style.display = 'none' //Hide spinner
+				hideEmptyGroups()
+				},150)
+            
+        })
+    }
+    filterVideos=()=>{
+        filterText=document.getElementById('videofilter').value
+        videos=document.getElementById('videolist').children
+        for(var i=0;i<videos.length;i++) {
+            if(videos[i].innerText.toLowerCase().includes(filterText.toLowerCase())) {
+                videos[i].hidden=false
+            } else {
+                videos[i].hidden=true
+            }
+        }
+    }
+    setTimelineWindow=()=>{
+        timeline.setWindow(new Date(document.getElementById('date').value).setHours(7,30,0,0),new Date(document.getElementById('date').value).setHours(20,30,0,0))
+    }
+    let searchState = {
+        searchText: '',
+        matchingItems: [],
+        currentIndex: -1
+    };
+    findEvent=()=>{
+        //Zoom to 5 minutes only
+        const lowerSearch = document.getElementById('eventdesc').value.toLowerCase();
+        // If search text changed, reset match state
+        if (lowerSearch !== searchState.searchText.toLowerCase()) {
+            searchState.searchText = lowerSearch;
+            searchState.matchingItems = items.get().filter(item =>
+                item.content && item.content.toLowerCase().includes(lowerSearch)
+            );
+            searchState.currentIndex = -1;
+        }
+
+        const matches = searchState.matchingItems;
+        if (matches.length === 0) {
+            alert(`No items found for "${searchText}"`);
+            return;
+        }
+
+        // Move to next item
+        searchState.currentIndex = (searchState.currentIndex + 1) % matches.length;
+        const matchedItem = matches[searchState.currentIndex];
+
+        // Highlight and zoom
+        timeline.setSelection([matchedItem.id]);
+
+            zoomToItem(matchedItem.id); // defined earlier
+        
+    }
+    zoomToItem = (itemId, zoomMargin = 0.25, zoomSeconds=90 )=>{
+        const item = items.get(itemId);
+        if (!item) return;
+
+        const start = new Date(item.start);
+        const end = item.end ? new Date(item.end) : start;
+        const duration = end - start || 0;
+        const margin = (duration==0?zoomSeconds*1000:duration * zoomMargin)
+
+        const windowStart = new Date(start.getTime() - margin);
+        const windowEnd = new Date(end.getTime() + margin);
+
+        timeline.setWindow(windowStart, windowEnd, { animation: true });
+    }
+    playbackSelected=()=>{
+        videosToAppend=timeline.getSelection().sort() //TODO: make sure they're in order!
+        if(videosToAppend.length==0) {alert('No video selected'); return;}
+        
+        startPlayback().then(() => switchTab('video'));
+    }
+    document.getElementById('date').value=new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0')+'-'+String(new Date().getDate()).padStart(2,'0')
+    refreshVideos()
+    
+    var videosToAppend=[]
+
+    function hideEmptyGroups() {
+        const range = timeline.getWindow(); // Get current visible window
+        const allGroups = groups.get();
+        const allItems = items.get();
+
+        // Get IDs of groups that have at least one visible item
+        const groupsWithVisibleItems = new Set();
+
+        allItems.forEach(item => {
+            const itemStart = new Date(item.start);
+            const itemEnd = item.end ? new Date(item.end) : itemStart;
+
+            const isVisible =
+            (itemEnd >= range.start && itemStart <= range.end); // Overlaps with window
+
+            if (isVisible) {
+            groupsWithVisibleItems.add(item.group);
+            }
+        });
+
+        // Filter the groups to only those that have visible items
+        const visibleGroups = allGroups.filter(group => groupsWithVisibleItems.has(group.id));
+
+        // Re-set the groups on the timeline (this doesn’t remove items, just hides their groups)
+        timeline.setGroups(visibleGroups);
+    }
+
+
+    // Set up timeline
+    var items = new vis.DataSet([]);
+    var groups = new vis.DataSet([]);
+    var timeline = new vis.Timeline(document.getElementById('timeline'), items,groups, {minHeight:'300px',zoomMin:1000*60,zoomKey:'ctrlKey',showCurrentTime:true,selectable:true,multiselect:true,sequentialSelection:true,multiselectPerGroup:true,stack:false,start:new Date().setHours(7,30,0,0),end:new Date().setHours(20,30,0,0)});
+    timeline.on('rangechanged', function () {
+        hideEmptyGroups();
+    });
+	setTimelineWindow()
+    
+    // Fetch a file and return its Uint8Array
+    async function fetchVideoFile(url) {
+      const res = await fetch('/video/'+url);
+      return new Uint8Array(await res.arrayBuffer());
+    }
+
+    // Map EBML codec ID to MediaSource codec string
+    function extractCodec(track) {
+        // Video fallback
+        if (track['@type'] === 'Video') {
+            if (track.Format === 'AVC') {
+                // Profile/Level → avc1.640028 (High@L4.0)
+                const profileIDC = {
+                    'Baseline': '42',
+                    'Main': '4D',
+                    'High': '64',
+                }[track.Format_Profile] || '42';
+
+                const levelHex = (parseFloat(track.Format_Level || '3.0') * 10).toString(16).padStart(2, '0');
+                return `avc1.${profileIDC}00${levelHex}`;
+            }
+
+            if (track.Format === 'HEVC') return 'hvc1';
+            if (track.Format === 'VP8') return 'vp8';
+            if (track.Format === 'VP9') return 'vp9';
+            if (track.Format === 'AV1') return 'av01';
+        }
+        if (track['@type'] === 'Audio') {
+            if (track.Format === 'AAC') return 'mp4a.40.2';
+            if (track.Format === 'MP3') return 'mp3';
+            if (track.Format === 'Opus') return 'opus';
+            if (track.Format === 'Vorbis') return 'vorbis';
+            if (track.Format === 'FLAC') return 'flac';
+        }
+
+        return null;
+    }
+    function inferMimeType(format) {
+        const map = {
+            'MPEG-4': 'video/mp4',
+            'MPEG Audio': 'audio/mpeg',
+            'MPEG Video': 'video/mpeg',
+            'Matroska': 'video/webm',
+            'WebM': 'video/webm',
+            'AVI': 'video/x-msvideo',
+            'Wave': 'audio/wav',
+            'AAC': 'audio/aac',
+            'FLAC': 'audio/flac',
+            'Opus': 'audio/ogg',
+            'Ogg': 'audio/ogg',
+            'QuickTime': 'video/quicktime',
+            'WMV': 'video/x-ms-wmv',
+            'RealMedia': 'application/vnd.rn-realmedia',
+            '3GP': 'video/3gpp',
+        };
+        return map[format] || 'application/octet-stream';
+    }
+    function getMimeTypeAndCodecs(mediaInfoResult) {
+        const tracks = mediaInfoResult?.media?.track || [];
+
+        const generalTrack = tracks.find(t => t['@type'] === 'General');
+        const mimeType = generalTrack?.MimeType || inferMimeType(generalTrack?.Format || '');
+
+        const codecTracks = tracks.filter(t => ['Video', 'Audio'].includes(t['@type']));
+        const codecs = codecTracks.map(track => extractCodec(track)).filter(Boolean);
+
+        return `${mimeType}; codecs="${codecs.join(', ')}"`;
+    }
+    var playbackStartTime = null;
+    
+    function setDownloadBtn(state) {
+        // state: 'hidden' | 'buffering' | 'ready'
+        const rec = document.getElementById('record-btn');
+        rec.className = '';
+        if (state === 'buffering') {
+            // record button not yet useful while buffering
+        } else if (state === 'ready') {
+            rec.classList.add('ready');   // enable clip recording
+        }
+        // 'hidden' → no class, both buttons hidden via CSS
+    }
+
+    // ── Clip recording via MediaRecorder ────────────────────────────────────────
+    var _clipRecorder   = null;
+    var _clipChunks     = [];
+    var _clipMime       = '';
+    var _clipStartVideo = 0;   // video.currentTime when recording started
+
+    function toggleClipRecording() {
+        if (_clipRecorder && _clipRecorder.state === 'recording') {
+            _stopClip();
+        } else {
+            _startClip();
+        }
+    }
+
+    function _startClip() {
+        const video = document.getElementById('player');
+        if (!video.srcObject && !video.src) return;
+
+        // Prefer webm/vp8 as it is universally supported by MediaRecorder.
+        // Fall back to whatever the browser supports.
+        const preferredMime = ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
+            .find(m => MediaRecorder.isTypeSupported(m)) || '';
+
+        let stream;
+        try {
+            stream = video.captureStream();
+        } catch(e) {
+            alert('captureStream() not supported in this browser.');
+            return;
+        }
+
+        _clipChunks = [];
+        _clipMime   = preferredMime;
+        _clipStartVideo = video.currentTime;
+
+        _clipRecorder = new MediaRecorder(stream, preferredMime ? { mimeType: preferredMime } : {});
+        _clipRecorder.ondataavailable = e => { if (e.data && e.data.size > 0) _clipChunks.push(e.data); };
+        _clipRecorder.onstop = _finishClip;
+        _clipRecorder.start(1000); // collect data every 100 ms
+
+        // Update button appearance
+        const btn = document.getElementById('record-btn');
+        const lbl = document.getElementById('record-btn-label');
+        btn.className = 'recording';
+        lbl.textContent = 'Stop';
+    }
+
+    function _stopClip() {
+        if (_clipRecorder && _clipRecorder.state !== 'inactive') {
+            _clipRecorder.stop();
+        }
+    }
+
+    function _finishClip() {
+        if (_clipChunks.length === 0) return;
+
+        const mimeBase = (_clipMime || 'video/webm').split(';')[0];
+        const ext = mimeBase.includes('mp4') ? 'mp4' : 'webm';
+
+        // Build a filename that includes the wall-clock start time of the clip
+        let ts = 'clip';
+        if (playbackStartTime) {
+            const clipWall = new Date(Number(playbackStartTime) + _clipStartVideo * 1000);
+            ts = 'clip_' + clipWall.getFullYear() + '-' +
+                 String(clipWall.getMonth()+1).padStart(2,'0') + '-' +
+                 String(clipWall.getDate()).padStart(2,'0') + '_' +
+                 String(clipWall.getHours()).padStart(2,'0') +
+                 String(clipWall.getMinutes()).padStart(2,'0') +
+                 String(clipWall.getSeconds()).padStart(2,'0');
+        }
+
+        const blob = new Blob(_clipChunks, { type: mimeBase });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = ts + '.' + ext;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+
+        // Reset button back to ready state
+        const btn = document.getElementById('record-btn');
+        const lbl = document.getElementById('record-btn-label');
+        btn.className = 'ready';
+        lbl.textContent = 'Rec';
+        _clipRecorder = null;
+    }
+
+    async function startPlayback() { // returns Promise; caller switches to video tab
+        recordedChunks = [];
+        setDownloadBtn('hidden');
+
+        try {
+            playbackStartTime=new Date(Number(videosToAppend[0].split("!")[1])-Number(videosToAppend[0].split("!")[2].split(".")[0]))
+            document.getElementById('videodesc').innerHTML=": "+videosToAppend[0].split("!")[0]+" from "+playbackStartTime.getDate()+"/"+(playbackStartTime.getMonth()+1)+"/"+playbackStartTime.getFullYear()+" "+String(playbackStartTime.getHours()).padStart(2,"0")+":"+String(playbackStartTime.getMinutes()).padStart(2,"0")
+        } catch (e) {
+            document.getElementById('videodesc').innerHTML=""
+        }
+        try {timeline.removeCustomTime()} catch(e){}
+		timeline.addCustomTime(playbackStartTime)
+
+		const firstFile = await fetchVideoFile(videosToAppend.shift());
+        const mi = await MediaInfo.mediaInfoFactory({locateFile:(path,prefix)=>{return '/MediaInfoModule.wasm'}});
+        const readChunk = async (chunkSize, offset) => firstFile.slice(offset, offset + chunkSize)
+        const result = await mi.analyzeData(firstFile.byteLength, readChunk)
+        const mime = getMimeTypeAndCodecs(result);
+        recordedMime = mime;
+		
+        const mediaSource = new MediaSource();
+        document.getElementById('player').src = URL.createObjectURL(mediaSource);
+        setDownloadBtn('buffering');
+		
+        mediaSource.addEventListener('sourceopen', async () => {
+            const sourceBuffer = mediaSource.addSourceBuffer(mime);
+            sourceBuffer.mode = 'sequence';
+
+            // Track whether all chunks (including queued ones) have been appended
+            let remainingAtStart = videosToAppend.length + 1; // +1 for firstFile
+            let appended = 0;
+
+            function onChunkAppended(chunk) {
+                recordedChunks.push(chunk);
+                appended++;
+                if (appended >= remainingAtStart) {
+                    setDownloadBtn('ready');
+                }
+            }
+
+            appendNext = async () => {
+                if (!sourceBuffer.updating) {
+                    if (videosToAppend.length <= 0) {
+                        if (mediaSource.readyState !== 'ended') {
+                            mediaSource.endOfStream();
+                        }
+                        return;
+                    }
+                    const chunk = await fetchVideoFile(videosToAppend.shift());
+                    onChunkAppended(chunk);
+                    sourceBuffer.appendBuffer(chunk);
+                }
+            }
+            sourceBuffer.addEventListener('updateend', appendNext);
+
+            onChunkAppended(firstFile);
+            sourceBuffer.appendBuffer(firstFile);
+        });
+    }
+    document.getElementById('player').addEventListener('waiting',(e)=>{
+        //Sometimes end up with small gaps in the buffer, so if we are waiting, try skipping forward up to 1s in 5ms steps
+        let totalSkipped = 0;
+		console.log('Encountered buffering in video at '+document.getElementById('player').currentTime+'. Skipping to keep playing');
+        
+
+        function skipFwd() {
+            if (!document.getElementById('player').paused && !document.getElementById('player').seeking && document.getElementById('player').readyState >= 3) {
+                // Video is no longer buffering
+                console.log('Playback resumed at '+document.getElementById('player').currentTime+'.');
+                return;
+            }
+
+            if (totalSkipped >= 1) {
+                console.warn('Max skip time reached. Still buffering.');
+                return;
+            }
+
+            document.getElementById('player').currentTime += 0.020;
+            totalSkipped += 0.020;
+            
+            // Wait a bit and try again
+            setTimeout(skipFwd, 20); // check every 20ms
+        }
+
+        skipFwd();
+    })
+//Display QR codes
+    // Show modal with image URL
+    function showImageModal(imageUrl,linkSuffix) {
+        const modal = document.getElementById('imageModal');
+        const modalImg = document.getElementById('modalImage');
+        //modalImg.src = imageUrl;
+        fetch(imageUrl).then(data=>data.text()).then(data=>{modalImg.src=data})
+        fetch('/ip').then(data=>data.text()).then(data=>{
+			var addresses=JSON.parse(data)
+			var interfaces=Object.keys(addresses)
+            var address_string=''
+            if(interfaces.length==1) {
+                address_string='https://'+addresses[interfaces[0]]+':3000/'+linkSuffix
+            } else {
+                for(var i=0;i<interfaces.length;i++) {
+                    address_string=(i==0?'':address_string+' or ')+'https://'+addresses[interfaces[i]]+':3000/'+linkSuffix+' ('+interfaces[i]+')'
+                }
+            }
+			document.getElementById('modalCaption').innerHTML=address_string
+		})
+        modal.style.display = 'flex';
+    }
+
+    // Hide modal
+    function hideImageModal() {
+        const modal = document.getElementById('imageModal');
+        modal.style.display = 'none';
+    }
+
+    // Close modal when clicking anywhere on the overlay
+    document.getElementById('imageModal').addEventListener('click', hideImageModal);
+
+    // ── Tab switching ─────────────────────────────────────────────────────────
+
+    function switchTab(name) {
+        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById('pane-' + name).classList.add('active');
+        document.querySelectorAll('.tab-btn').forEach(b => {
+            if (b.textContent.toLowerCase().includes(name === 'video' ? 'video' : 'event')) {
+                b.classList.add('active');
+            }
+        });
+    }
+
+    // ── Event table ───────────────────────────────────────────────────────────
+
+    function formatTime(ms) {
+        const d = new Date(ms);
+        const now = new Date();
+
+        const time = d.toLocaleTimeString('en-GB'); // hh:mm:ss
+
+        const isToday = d.toDateString() === now.toDateString();
+        if (isToday) return time;
+
+        const dateStr = d.toLocaleDateString('en-GB', {
+            day: 'numeric',
+            month: 'short',
+            year: '2-digit'
+        }); // e.g. "6 Mar 25"
+
+        return `${time} ${dateStr}`;
+    }
+
+    // recentScores holds all rows as objects so we can re-render without a full fetch
+    var recentScores = [];
+    function renderScoresTable() {
+        const tbody = document.getElementById('score-table-body');
+        if (recentScores.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" style="color:#888;font-style:italic">No scores yet</td></tr>';
+            return;
+        }
+        tbody.innerHTML = recentScores.map(m => {
+            const statusClass = 'status-' + (m.status || '');
+            const icon = m.status === 'competing' ? '&#x25B6; ' : m.status === 'stopped' ? '&#x25A0; ' : '';
+            return `<tr>
+                <td>${m.apparatus || ''}</td>
+                <td>${m.competitor ?? ''}</td>
+                <td>${m.name || ''}${m.club ? ' (' + m.club + ')' : ''}</td>
+                <td>${m.d != null && m.d!='' ? Number(m.d).toFixed(1) : ''}</td>
+                <td>${m.e != null  && m.e!='' ? Number(m.e).toFixed(3) : ''}</td>
+                <td>${m.nd != null  && m.nd!='' ? Number(m.nd).toFixed(1) : ''}</td>
+                <td>${m.final_score != null  && m.final_score!='' ? Number(m.final_score).toFixed(3) : ''}</td>
+                <td>${formatTime(m.time)}</td>
+            </tr>`;
+        }).join('');
+    }
+    // Populate table from the eventlist API (called by refreshVideos already)
+    function refreshScoresTable() {
+        fetch('/scorelist')
+            .then(r => r.json())
+            .then(data => {
+                recentScores=data
+                renderScoresTable()
+            })
+            .catch(() => {});
+    }
+    refreshScoresTable();
+
+    // ── WebSocket – live event updates ────────────────────────────────────────
+    //
+    // The Go server broadcasts JSON status messages on /ws whenever a UDP
+    // message is received from a keypad or iPad controller.
+    //
+    // Message shape:
+    // {
+    //   server:     "192.168.1.x",   // source IP
+    //   status:     "competing" | "stopped" | "scoring" | "ready",
+    //   apparatus:  "Vault" | "Bars" | "Beam" | "Floor",
+    //   competitor: "42",
+    //   firstName:  "Jane",
+    //   surname:    "Doe",
+    //   club:       "TST",
+    //   time:       1718000000000    // Unix ms
+    // }
+
+    (function connectWebSocket() {
+        const ws = new WebSocket('wss://' + location.host + '/ws');
+
+        ws.addEventListener('open', () => {
+            console.log('WebSocket connected');
+        });
+
+        ws.addEventListener('score', (event) => {
+            let msg;
+            try { msg = JSON.parse(event.data); } catch(e) { return; }
+
+            // Append to live table
+            recentScores.unshift(msg);
+            renderScoresTable();
+        })
+        ws.addEventListener('event', (event) => {
+            let msg;
+            try { msg = JSON.parse(event.data); } catch(e) { return; }
+
+            // Also add to the vis timeline without a full reload
+            try {
+                groups.add({ id: 'E|' + msg.apparatus, content: msg.apparatus });
+            } catch(e) { /* duplicate – ignore */ }
+            try {
+                items.add({
+                    id: msg.time + msg.server + msg.apparatus,
+                    group: 'E|' + msg.apparatus,
+                    start: msg.time,
+                    type: 'box',
+                    className: msg.status,
+                    content:
+                        (msg.status === 'competing' ? '&#x25B6;' : msg.status === 'stopped' ? '&#x25A0;' : '') +
+                        '<small> ' + msg.competitor + ' (' + msg.club + ') <br />' +
+                        msg.firstName + ' ' + msg.surname + '</small>'
+                });
+            } catch(e) {}
+        });
+
+        ws.addEventListener('close', () => {
+            console.log('WebSocket closed – reconnecting in 3 s');
+            setTimeout(connectWebSocket, 3000);
+        });
+
+        ws.addEventListener('error', (e) => {
+            console.warn('WebSocket error', e);
+            ws.close();
+        });
+    })();
+
+</script>
+</html>
