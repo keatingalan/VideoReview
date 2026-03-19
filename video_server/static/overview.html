@@ -352,25 +352,30 @@
                             end:new Date(v.start_time+v.length)
                         })
                     })
-                    data.forEach(m=>{
-                        try{
-                            groups.add({
-                                id:"E|"+m.apparatus,
-                                content:m.apparatus
-                            })
-                        } catch(e) {/*ignore - probably just duplicate category*/}
-                        items.add({
-                            id:m.time+m.server+m.apparatus,
-                            group:"E|"+m.apparatus,
-                            start:m.time,
-                            type:'box',
-                            className: m.status,
-                            content: 
-                                (m.status=='competing'?"&#x25B6;":(m.status='stopped'?"&#x25A0;":""))+
-                                '<small> '+m.competitor+" ("+m.club+") <br />"+m.firstName+' '+m.surname+'</small>'
-                        })
-                    })
                 }
+            })
+        
+            //Show routines
+            data.forEach(m=>{
+                try{
+                    groups.add({
+                        id:"E|"+m.apparatus,
+                        content:m.apparatus
+                    })
+                } catch(e) {/*ignore - probably just duplicate category*/}
+                items.add({
+                    id:m.id,
+                    group:"E|"+m.apparatus,
+                    start:m.time_start,
+                    end:(m.time_stop?m.time_stop:m.time_start),
+                    //type: (m.time_stop?'':'box'),
+                    //className: m.status,
+                    content: 
+                        //(m.status=='competing'?"&#x25B6;":(m.status='stopped'?"&#x25A0;":""))+
+                        '<small>'+m.competitor+" ("+m.club+") <br />"+m.name+'</small>',
+                    title: 
+                        '<small>'+m.competitor+"<br />"+m.club+"<br />"+m.name+'</small>'
+                })
             })
             setTimeout(()=>{
 				document.getElementById('loading-overlay').style.display = 'none' //Hide spinner
@@ -819,7 +824,7 @@
         tbody.innerHTML = recentScores.map(m => {
             const statusClass = 'status-' + (m.status || '');
             const icon = m.status === 'competing' ? '&#x25B6; ' : m.status === 'stopped' ? '&#x25A0; ' : '';
-            return `<tr>
+            return `<tr onclick="zoomToItem(${m.id})">
                 <td>${m.apparatus || ''}</td>
                 <td>${m.competitor ?? ''}</td>
                 <td>${m.name || ''}${m.club ? ' (' + m.club + ')' : ''}</td>
@@ -827,7 +832,7 @@
                 <td>${m.e != null  && m.e!='' ? Number(m.e).toFixed(3) : ''}</td>
                 <td>${m.nd != null  && m.nd!='' ? Number(m.nd).toFixed(1) : ''}</td>
                 <td>${m.final_score != null  && m.final_score!='' ? Number(m.final_score).toFixed(3) : ''}</td>
-                <td>${formatTime(m.time)}</td>
+                <td>${formatTime(m.time_score)}</td>
             </tr>`;
         }).join('');
     }
@@ -892,6 +897,9 @@
                     className: msg.status,
                     content:
                         (msg.status === 'competing' ? '&#x25B6;' : msg.status === 'stopped' ? '&#x25A0;' : '') +
+                        '<small> ' + msg.competitor + ' (' + msg.club + ') <br />' +
+                        msg.firstName + ' ' + msg.surname + '</small>',
+                    title: (msg.status === 'competing' ? '&#x25B6;' : msg.status === 'stopped' ? '&#x25A0;' : '') +
                         '<small> ' + msg.competitor + ' (' + msg.club + ') <br />' +
                         msg.firstName + ' ' + msg.surname + '</small>'
                 });

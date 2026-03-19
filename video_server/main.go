@@ -11,6 +11,7 @@ import (
 	"embed"
 	"encoding/json"
 	"encoding/pem"
+	"flag"
 	"fmt"
 	"io"
 	"io/fs"
@@ -55,13 +56,13 @@ const (
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type EventMsg struct {
-	ID         int64   `json:"id"`
+	ID         *int64  `json:"id,omitempty"`
 	Server     string  `json:"server"`
 	Apparatus  string  `json:"apparatus"`
 	Competitor string  `json:"competitor"`
 	Name       string  `json:"name"`
-	Club       string  `json:"club"`
-	TimeStart  int64   `json:"time_start"`
+	Club       string  `json:"club,omitempty"`
+	TimeStart  int64   `json:"time_start,omitempty"`
 	TimeStop   *int64  `json:"time_stop,omitempty"`
 	TimeScore  *int64  `json:"time_score,omitempty"`
 	TimeScore2 *int64  `json:"time_score2,omitempty"`
@@ -74,11 +75,28 @@ type EventMsg struct {
 	E2         float64 `json:"e2,omitempty"`
 	ND2        float64 `json:"nd2,omitempty"`
 	Score2     float64 `json:"score2,omitempty"`
-	// Status is not stored in the DB; derived from which time fields are populated.
-	// It is set on reads and drives saveEvent logic on writes.
-	Status string `json:"status"`
+	Status     string  `json:"status"`
 }
-
+type ProScoreMessage struct {
+	Time        int64   `json:"time"`
+	Server      string  `json:"server"`
+	Status      string  `json:"status"`
+	Apparatus   string  `json:"apparatus"`
+	Competitor  string  `json:"competitor"`
+	Name        string  `json:"name"`
+	Club        string  `json:"club"`
+	Level       string  `json:"level"`
+	DScore      float64 `json:"dscore"`
+	EScore      float64 `json:"escore"`
+	ND          float64 `json:"nd"`
+	FinalScore  float64 `json:"finalScore"`
+	Score1      float64 `json:"score1"`
+	DScore2     float64 `json:"dscore2"`
+	EScore2     float64 `json:"escore2"`
+	ND2         float64 `json:"nd2"`
+	Score2      float64 `json:"score2"`
+	FullMessage any     `json:"fullMessage"`
+}
 type VideoFile struct {
 	CameraDesc string `json:"camera_desc"`
 	Length     int64  `json:"length"`
@@ -112,7 +130,7 @@ func (h *Hub) unregister(conn *websocket.Conn) {
 	h.mu.Unlock()
 }
 
-func (h *Hub) broadcast(v interface{}) {
+func (h *Hub) broadcast(v any) {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return
@@ -266,6 +284,8 @@ func initDB() {
 	}
 	db.Exec("PRAGMA journal_mode=WAL")
 	db.Exec("PRAGMA synchronous=NORMAL")
+	db.Exec("PRAGMA busy_timeout=5000") // wait up to 5s instead of immediately returning SQLITE_BUSY
+	db.SetMaxOpenConns(1)               // serialise all writes through one connection
 
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS routines (
 		id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -303,34 +323,56 @@ func initDB() {
 	log.Printf("Database ready at %s", dbPath)
 }
 
-func saveEvent(msg EventMsg) {
+func saveMessage(msg ProScoreMessage, routineID int64) {
+	msgJSON, _ := json.Marshal(msg)
+	var rid sql.NullInt64
+	if routineID != 0 {
+		rid = sql.NullInt64{Int64: routineID, Valid: true}
+	}
+	if _, err := db.Exec(
+		`INSERT INTO messages (server, message, routine_id) VALUES (?,?,?)`,
+		msg.Server, string(msgJSON), rid,
+	); err != nil {
+		log.Printf("saveMessage error: %v", err)
+	}
+}
+
+func saveEvent(msg ProScoreMessage) {
+	// routineID stays 0 if we can't write to routines — the message is still
+	// saved to the messages table with a NULL routine_id for later inspection.
+	var routineID int64
+
 	switch msg.Status {
 	case "competing":
-		_, err := db.Exec(`INSERT INTO routines
+		result, err := db.Exec(`INSERT INTO routines
 			(server, apparatus, competitor, name, club, time_start)
 			VALUES (?,?,?,?,?,?)`,
 			msg.Server, msg.Apparatus, msg.Competitor,
-			msg.Name, msg.Club, msg.TimeStart,
+			msg.Name, msg.Club, msg.Time,
 		)
 		if err != nil {
 			log.Println("saveEvent insert error:", err)
+		} else {
+			routineID, _ = result.LastInsertId()
 		}
 
 	case "stopped", "scoring":
 		const tenMin = int64(10 * 60 * 1000)
-		windowStart := msg.TimeStart - tenMin
-		now := msg.TimeStart
+		windowStart := msg.Time - tenMin
+		now := msg.Time
 
 		var existingID int64
 		err := db.QueryRow(`SELECT id FROM routines
-			WHERE competitor = ? AND apparatus = ? AND server = ?
-			  AND time_stop  IS NULL
-			  AND time_score IS NULL
+			WHERE (competitor = ? or ? = '') AND apparatus = ? AND server = ?
+			  AND (
+			    (time_stop  IS NULL AND time_score IS NULL)
+			    OR time_stop >=? 
+			  )
 			  AND time_start >= ?
 			ORDER BY time_start DESC LIMIT 1`,
-			msg.Competitor, msg.Apparatus, msg.Server, windowStart,
+			msg.Competitor, msg.Competitor, msg.Apparatus, msg.Server, msg.Time-int64(1000), windowStart,
 		).Scan(&existingID)
-
+		//Looks for routines started in last ten minutes and not finished, or finished within 1s of this finish
 		if err == nil {
 			// Build SET clause dynamically.
 			//
@@ -341,51 +383,47 @@ func saveEvent(msg EventMsg) {
 			setClauses := []string{"time_stop = COALESCE(time_stop, ?)"}
 			args := []any{now}
 
-			hasScore := msg.FinalScore != 0 || msg.D != 0 || msg.E != 0 || msg.Score1 != 0 ||
-				msg.D2 != 0 || msg.E2 != 0 || msg.Score2 != 0
+			hasScore := msg.FinalScore != 0 || msg.DScore != 0 || msg.EScore != 0 || msg.Score1 != 0 ||
+				msg.DScore2 != 0 || msg.EScore2 != 0 || msg.Score2 != 0
 
 			if hasScore {
-				scoreTime := now
-				if msg.TimeScore != nil {
-					scoreTime = *msg.TimeScore
-				}
 				setClauses = append(setClauses, "time_score = COALESCE(time_score, ?)")
-				args = append(args, scoreTime)
+				args = append(args, msg.Time)
 			}
-			if msg.D != 0 {
-				setClauses = append(setClauses, "d = ?")
-				args = append(args, msg.D)
+			if msg.DScore != 0 {
+				setClauses = append(setClauses, "d = coalesce(d,?)")
+				args = append(args, msg.DScore)
 			}
-			if msg.E != 0 {
-				setClauses = append(setClauses, "e = ?")
-				args = append(args, msg.E)
+			if msg.EScore != 0 {
+				setClauses = append(setClauses, "e = coalesce(e,?)")
+				args = append(args, msg.EScore)
 			}
 			if msg.ND != 0 {
-				setClauses = append(setClauses, "nd = ?")
+				setClauses = append(setClauses, "nd = coalesce(nd,?)")
 				args = append(args, msg.ND)
 			}
 			if msg.FinalScore != 0 {
-				setClauses = append(setClauses, "final_score = ?")
+				setClauses = append(setClauses, "final_score = coalesce(final_score,?)")
 				args = append(args, msg.FinalScore)
 			}
 			if msg.Score1 != 0 {
-				setClauses = append(setClauses, "score1 = ?")
+				setClauses = append(setClauses, "score1 = coalesce(score1,?)")
 				args = append(args, msg.Score1)
 			}
-			if msg.D2 != 0 {
-				setClauses = append(setClauses, "d2 = ?")
-				args = append(args, msg.D2)
+			if msg.DScore2 != 0 {
+				setClauses = append(setClauses, "d2 = coalesce(d2,?)")
+				args = append(args, msg.DScore2)
 			}
-			if msg.E2 != 0 {
-				setClauses = append(setClauses, "e2 = ?")
-				args = append(args, msg.E2)
+			if msg.EScore2 != 0 {
+				setClauses = append(setClauses, "e2 = coalesce(e2,?)")
+				args = append(args, msg.EScore2)
 			}
 			if msg.ND2 != 0 {
-				setClauses = append(setClauses, "nd2 = ?")
+				setClauses = append(setClauses, "nd2 = coalesce(nd2,?)")
 				args = append(args, msg.ND2)
 			}
 			if msg.Score2 != 0 {
-				setClauses = append(setClauses, "score2 = ?")
+				setClauses = append(setClauses, "score2 = coalesce(score2,?)")
 				args = append(args, msg.Score2)
 			}
 
@@ -393,38 +431,48 @@ func saveEvent(msg EventMsg) {
 			query := "UPDATE routines SET " + strings.Join(setClauses, ", ") + " WHERE id = ?"
 			if _, err := db.Exec(query, args...); err != nil {
 				log.Printf("saveEvent update error: %v", err)
+			} else {
+				routineID = existingID
 			}
 		} else {
 			// No open row found — insert a skeleton row with just time_start.
 			// Do not set time_stop: we have no matching "competing" record so
 			// this arrival is out-of-order; leave the row open rather than
 			// immediately closing it.
-			if _, err := db.Exec(`INSERT INTO routines
+			result, err := db.Exec(`INSERT INTO routines
 				(server, apparatus, competitor, name, club, time_start)
 				VALUES (?,?,?,?,?,?)`,
 				msg.Server, msg.Apparatus, msg.Competitor,
-				msg.Name, msg.Club, msg.TimeStart,
-			); err != nil {
+				msg.Name, msg.Club, msg.Time,
+			)
+			if err != nil {
 				log.Printf("saveEvent insert (no match) error: %v", err)
+			} else {
+				routineID, _ = result.LastInsertId()
 			}
 		}
 
 	default:
 		log.Printf("saveEvent: unhandled status %q, skipping", msg.Status)
 	}
+
+	saveMessage(msg, routineID)
 }
 
 func scanRoutineRow(rows *sql.Rows) (EventMsg, error) {
 	var e EventMsg
-	var timeStop, timeScore, timeScore2 sql.NullInt64
+	var timeStop, timeScore, timeScore2, id sql.NullInt64
 	var d, ev, nd, finalScore, score1, d2, e2, nd2, score2 sql.NullFloat64
 	err := rows.Scan(
-		&e.ID, &e.Server, &e.Apparatus, &e.Competitor, &e.Name, &e.Club,
+		&id, &e.Server, &e.Apparatus, &e.Competitor, &e.Name, &e.Club,
 		&e.TimeStart, &timeStop, &timeScore, &timeScore2,
 		&d, &ev, &nd, &finalScore, &score1, &d2, &e2, &nd2, &score2,
 	)
 	if err != nil {
 		return e, err
+	}
+	if id.Valid {
+		e.ID = &id.Int64
 	}
 	if timeStop.Valid {
 		e.TimeStop = &timeStop.Int64
@@ -462,6 +510,7 @@ func scanRoutineRow(rows *sql.Rows) (EventMsg, error) {
 	if score2.Valid {
 		e.Score2 = score2.Float64
 	}
+
 	switch {
 	case e.TimeScore != nil || e.TimeScore2 != nil:
 		e.Status = "scoring"
@@ -590,14 +639,14 @@ func listenKeypad() {
 			club = stripQuotes(get(6))
 		}
 
-		msg := EventMsg{
+		msg := ProScoreMessage{
 			Server:     raddr.IP.String(),
 			Status:     status,
 			Apparatus:  app,
 			Competitor: competitor,
 			Name:       name,
 			Club:       club,
-			TimeStart:  time.Now().UnixMilli(),
+			Time:       time.Now().UnixMilli(),
 		}
 
 		saveEvent(msg)
@@ -662,14 +711,14 @@ func listenIPads() {
 			status = "competing"
 		}
 
-		msg := EventMsg{
+		msg := ProScoreMessage{
 			Server:     raddr.IP.String(),
 			Status:     status,
 			Apparatus:  parsed.attrs["Event"],
 			Competitor: parsed.attrs["Num"],
 			Name:       strings.TrimSpace(parsed.attrs["FName"] + " " + parsed.attrs["LName"]),
 			Club:       parsed.gym,
-			TimeStart:  time.Now().UnixMilli(),
+			Time:       time.Now().UnixMilli(),
 		}
 
 		saveEvent(msg)
@@ -855,9 +904,13 @@ func handleIP(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleEvents(w http.ResponseWriter, r *http.Request) {
-	var body interface{}
-	json.NewDecoder(r.Body).Decode(&body)
-	log.Println(body)
+	var body ProScoreMessage
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		log.Printf("handleEvents decode error: %v", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	saveEvent(body)
 	w.WriteHeader(200)
 }
 
@@ -896,12 +949,20 @@ func (f tlsErrorFilter) Write(p []byte) (n int, err error) {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 func main() {
+	listen := flag.Bool("listen", false, "Enable UDP listeners for keypad and iPad devices")
+	flag.Parse()
+
 	os.MkdirAll(uploadDir, 0755)
 	initDB()
 	defer db.Close()
 
-	go listenKeypad()
-	go listenIPads()
+	if *listen {
+		go listenKeypad()
+		go listenIPads()
+		log.Println("UDP listeners active on ports", keypadUDPPort, "and", ipadUDPPort)
+	} else {
+		log.Println("UDP listening disabled (pass -listen to enable)")
+	}
 
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
@@ -911,7 +972,6 @@ func main() {
 
 	// Shared routes — registered on both muxes below.
 	registerShared := func(mux *http.ServeMux) {
-		mux.HandleFunc("/socket.io/", handleWS)
 		mux.HandleFunc("/ws", handleWS)
 		mux.HandleFunc("/ip", handleIP)
 		mux.HandleFunc("/events", handleEvents)
@@ -985,6 +1045,8 @@ func main() {
 		overviewAddr := fmt.Sprintf("http://%s:%d/overview", ip, httpPort)
 		log.Printf("Camera  (HTTPS): %s", cameraAddr)
 		log.Printf("Overview (HTTP): %s", overviewAddr)
+		log.Printf("\nConnect viewer devices to %s\n", overviewAddr)
+		qrterminal.GenerateHalfBlock(overviewAddr, qrterminal.L, os.Stdout)
 		log.Printf("\nConnect camera devices to %s\n", cameraAddr)
 		qrterminal.GenerateHalfBlock(cameraAddr, qrterminal.L, os.Stdout)
 	} else {

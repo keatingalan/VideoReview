@@ -11,6 +11,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"strconv"
@@ -30,18 +31,18 @@ type ProScoreMessage struct {
 	Status      string  `json:"status"`
 	Apparatus   string  `json:"apparatus"`
 	Competitor  string  `json:"competitor"`
-	Name        string  `json:"name"`
-	Club        string  `json:"club"`
-	Level       string  `json:"level"`
-	DScore      float64 `json:"dscore"`
-	EScore      float64 `json:"escore"`
-	ND          float64 `json:"nd"`
-	FinalScore  float64 `json:"finalScore"`
-	Score1      float64 `json:"score1"`
-	DScore2     float64 `json:"dscore2"`
-	EScore2     float64 `json:"escore2"`
-	ND2         float64 `json:"nd2"`
-	Score2      float64 `json:"score2"`
+	Name        string  `json:"name,omitempty"`
+	Club        string  `json:"club,omitempty"`
+	Level       string  `json:"level,omitempty"`
+	DScore      float64 `json:"dscore,omitempty"`
+	EScore      float64 `json:"escore,omitempty"`
+	ND          float64 `json:"nd,omitempty"`
+	FinalScore  float64 `json:"finalScore,omitempty"`
+	Score1      float64 `json:"score1,omitempty"`
+	DScore2     float64 `json:"dscore2,omitempty"`
+	EScore2     float64 `json:"escore2,omitempty"`
+	ND2         float64 `json:"nd2,omitempty"`
+	Score2      float64 `json:"score2,omitempty"`
 	FullMessage any     `json:"fullMessage"`
 }
 
@@ -606,10 +607,10 @@ func listenUDP(conn *net.UDPConn) {
 		}
 		data := string(buffer[:n])
 
-		if destPort == 23467 && len(data) >= 9 && data[0:9] == "SCOREGEN," {
-			continue
+		if destPort == 23467 && (len(data) < 13 || data[0:13] != "SCOREGEN-LAST") {
+			continue //Ignore this message
 		}
-		appendLog(fmt.Sprintf("Pkt: src=%s:%d → dst port=%d - %s", src.IP, src.Port, destPort, data))
+		appendLog(fmt.Sprintf("Captured %s:%d → port %d - %s", src.IP, src.Port, destPort, data))
 
 		stats.mu.Lock()
 		stats.messagesRx++
@@ -645,77 +646,103 @@ func listenUDP(conn *net.UDPConn) {
 // parseXMLMessage handles port 51521: XML with a NowUp or NewScore root element.
 func parseXMLMessage(server, data string) (ProScoreMessage, error) {
 	decoder := xml.NewDecoder(strings.NewReader(data))
-	root, err := xmlNodeToMap(decoder)
-	if err != nil {
-		return ProScoreMessage{}, fmt.Errorf("XML parse: %w", err)
+	decoder.CharsetReader = func(charset string, input io.Reader) (io.Reader, error) {
+		// Accept ISO-8859-1 as-is; Go's XML parser handles ASCII-range fine.
+		return input, nil
 	}
 
-	msg := ProScoreMessage{
-		Time:        time.Now().UnixMilli(),
-		Server:      server,
-		FullMessage: root,
-	}
-
-	if nowUp, ok := root["NowUp"].(map[string]any); ok {
-		attrs := xmlAttrs(nowUp)
-		msg.Status = "competing"
-		msg.Apparatus = apparatus[attrs["Event"]]
-		msg.Competitor = attrs["Num"]
-		msg.Name = attrs["FName"] + " " + attrs["LName"]
-		msg.Club = xmlStr(nowUp, "Gym")
-	} else if newScore, ok := root["NewScore"].(map[string]any); ok {
-		attrs := xmlAttrs(newScore)
-		msg.Status = "stopped"
-		msg.Apparatus = apparatus[attrs["Event"]]
-		msg.Competitor = attrs["Num"]
-		msg.Name = attrs["FName"] + " " + attrs["LName"]
-		msg.Club = xmlStr(newScore, "Gym")
-		msg.Level = attrs["Level"]
-		if f, err := strconv.ParseFloat(attrs["Score"], 64); err == nil {
-			msg.FinalScore = f
-		}
-		// Enrich with detailed scores from ProScore HTTP API.
-		// On any error or apparatus mismatch, leave the message as-is.
-		info, err := GetCompetitorInfoByHTTP(msg.Competitor, 1, msg.Apparatus)
+	// Advance to the first StartElement, skipping the XML declaration,
+	// processing instructions, and whitespace.
+	var rootName string
+	for {
+		token, err := decoder.Token()
 		if err != nil {
-			appendLog(fmt.Sprintf("GetCompetitorInfo warning: %v", err))
-		} else if info != nil {
-			if info.StartValue1 != nil {
-				msg.DScore = *info.StartValue1
-			}
-			if info.EScore1 != nil {
-				msg.EScore = *info.EScore1
-			}
-			if info.Adjust1 != nil {
-				msg.ND = *info.Adjust1
-			}
-			if info.Score1 != nil {
-				msg.Score1 = *info.Score1
-			}
-			if info.StartValue2 != nil {
-				msg.DScore2 = *info.StartValue2
-			}
-			if info.EScore2 != nil {
-				msg.EScore2 = *info.EScore2
-			}
-			if info.Adjust2 != nil {
-				msg.ND2 = *info.Adjust2
-			}
-			if info.Score2 != nil {
-				msg.Score2 = *info.Score2
-			}
-			if info.Level != "" {
-				msg.Level = info.Level
-			}
-			if info.Gym != "" {
-				msg.Club = info.Gym
-			}
+			return ProScoreMessage{}, fmt.Errorf("XML parse: finding root element: %w", err)
 		}
-	} else {
-		msg.Status = "unknown"
-	}
+		if se, ok := token.(xml.StartElement); ok {
+			rootName = se.Name.Local
+			// Parse the root element's children and attributes.
+			child, err := xmlNodeToMap(decoder)
+			if err != nil {
+				return ProScoreMessage{}, fmt.Errorf("XML parse: %w", err)
+			}
+			if len(se.Attr) > 0 {
+				attrs := make(map[string]string, len(se.Attr))
+				for _, a := range se.Attr {
+					attrs[a.Name.Local] = a.Value
+				}
+				child["_attr"] = attrs
+			}
+			root := map[string]any{rootName: child}
 
-	return msg, nil
+			msg := ProScoreMessage{
+				Time:        time.Now().UnixMilli(),
+				Server:      server,
+				FullMessage: root,
+			}
+
+			if nowUp, ok := root["NowUp"].(map[string]any); ok {
+				attrs := xmlAttrs(nowUp)
+				msg.Status = "competing"
+				msg.Apparatus = attrs["Event"]
+				msg.Competitor = attrs["Num"]
+				msg.Name = strings.TrimSpace(attrs["FName"] + " " + attrs["LName"])
+				msg.Club = xmlStr(nowUp, "Gym")
+			} else if newScore, ok := root["NewScore"].(map[string]any); ok {
+				attrs := xmlAttrs(newScore)
+				msg.Status = "stopped"
+				msg.Apparatus = attrs["Event"]
+				msg.Competitor = attrs["Num"]
+				msg.Name = strings.TrimSpace(attrs["FName"] + " " + attrs["LName"])
+				msg.Club = xmlStr(newScore, "Gym")
+				msg.Level = attrs["Level"]
+				if f, err := strconv.ParseFloat(attrs["Score"], 64); err == nil {
+					msg.FinalScore = f
+				}
+				// Enrich with detailed scores from ProScore HTTP API.
+				info, err := GetCompetitorInfoByHTTP(msg.Competitor, 1, msg.Apparatus)
+				if err != nil {
+					appendLog(fmt.Sprintf("GetCompetitorInfo warning: %v", err))
+				} else if info != nil {
+					if info.StartValue1 != nil {
+						msg.DScore = *info.StartValue1
+					}
+					if info.EScore1 != nil {
+						msg.EScore = *info.EScore1
+					}
+					if info.Adjust1 != nil {
+						msg.ND = *info.Adjust1
+					}
+					if info.Score1 != nil {
+						msg.Score1 = *info.Score1
+					}
+					if info.StartValue2 != nil {
+						msg.DScore2 = *info.StartValue2
+					}
+					if info.EScore2 != nil {
+						msg.EScore2 = *info.EScore2
+					}
+					if info.Adjust2 != nil {
+						msg.ND2 = *info.Adjust2
+					}
+					if info.Score2 != nil {
+						msg.Score2 = *info.Score2
+					}
+					if info.Level != "" {
+						msg.Level = info.Level
+					}
+					if info.Gym != "" {
+						msg.Club = info.Gym
+					}
+				}
+			} else {
+				msg.Status = "unknown"
+				appendLog(fmt.Sprintf("XML: unrecognised root element %q", rootName))
+			}
+
+			return msg, nil
+		}
+	}
 }
 
 func xmlAttrs(node map[string]any) map[string]string {
@@ -754,7 +781,7 @@ func parseCSVMessage(server, data string) (ProScoreMessage, error) {
 	cmd := fields[0]
 	switch cmd {
 	case "PODIUM-STATUS":
-		// fields: cmd, statusCode, apparatus, competitor, firstName, surname, club
+		// fields: cmd, statusCode, apparatus, competitor, firstName, surname, club, someflag??
 		if len(fields) < 2 {
 			return ProScoreMessage{}, fmt.Errorf("PODIUM-STATUS too short")
 		}
@@ -778,9 +805,9 @@ func parseCSVMessage(server, data string) (ProScoreMessage, error) {
 		if len(fields) > 6 {
 			msg.Club = stripQuotes(fields[6])
 		}
-		appendLog(fields[1])
 
 	case "PODIUM-SCORE":
+		//PODIUM-SCORE,VT,102,"Rebecca","Hale","MLC",false,12.550
 		msg.Status = "stopped"
 		if len(fields) > 1 {
 			msg.Apparatus = apparatus[fields[1]]
@@ -842,7 +869,7 @@ func parseCSVMessage(server, data string) (ProScoreMessage, error) {
 		}
 
 	default:
-		msg.Status = "unknown"
+		return ProScoreMessage{}, fmt.Errorf("Unknown message type")
 	}
 
 	return msg, nil
@@ -877,15 +904,35 @@ func stripQuotes(s string) string {
 
 func xmlToJSON(xmlData string) (string, error) {
 	decoder := xml.NewDecoder(strings.NewReader(xmlData))
-	root, err := xmlNodeToMap(decoder)
-	if err != nil {
-		return "", fmt.Errorf("XML parse error: %w", err)
+	decoder.CharsetReader = func(charset string, input io.Reader) (io.Reader, error) {
+		return input, nil
 	}
-	b, err := json.Marshal(root)
-	if err != nil {
-		return "", fmt.Errorf("JSON encode error: %w", err)
+	// Skip past the XML declaration and whitespace to the root StartElement.
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			return "", fmt.Errorf("XML parse error: finding root: %w", err)
+		}
+		if se, ok := token.(xml.StartElement); ok {
+			child, err := xmlNodeToMap(decoder)
+			if err != nil {
+				return "", fmt.Errorf("XML parse error: %w", err)
+			}
+			if len(se.Attr) > 0 {
+				attrs := make(map[string]string, len(se.Attr))
+				for _, a := range se.Attr {
+					attrs[a.Name.Local] = a.Value
+				}
+				child["_attr"] = attrs
+			}
+			root := map[string]any{se.Name.Local: child}
+			b, err := json.Marshal(root)
+			if err != nil {
+				return "", fmt.Errorf("JSON encode error: %w", err)
+			}
+			return string(b), nil
+		}
 	}
-	return string(b), nil
 }
 
 func xmlNodeToMap(decoder *xml.Decoder) (map[string]any, error) {
@@ -1098,6 +1145,7 @@ func nullableFloat(s string) *float64 {
 	if err != nil || f == -99 {
 		return nil
 	}
+	f = math.Round(f*1000) / 1000
 	return &f
 }
 
