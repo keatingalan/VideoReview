@@ -8,6 +8,7 @@ require (
 	github.com/mdp/qrterminal/v3 v3.2.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	modernc.org/sqlite v1.46.1
+	videoreview/shared v0.0.0
 )
 
 require (
@@ -28,3 +29,5 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 	rsc.io/qr v0.2.0 // indirect
 )
+
+replace videoreview/shared => ../shared
