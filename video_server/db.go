@@ -165,19 +165,67 @@ func saveEvent(msg ProScoreMessage) {
 				routineID = existingID
 			}
 		} else {
-			result, err := db.Exec(`INSERT INTO routines
-				(server, apparatus, competitor, name, club, time_start)
-				VALUES (?,?,?,?,?,?)`,
-				msg.Server, msg.Apparatus, msg.Competitor,
-				msg.Name, msg.Club, msg.Time,
-			)
+			// No open row found — insert with all available data from the message.
+			cols := []string{"server", "apparatus", "competitor", "name", "club", "time_start"}
+			args := []any{msg.Server, msg.Apparatus, msg.Competitor, msg.Name, msg.Club, msg.Time}
+
+			cols = append(cols, "time_stop")
+			args = append(args, now)
+
+			hasScore := msg.FinalScore != 0 || msg.DScore != 0 || msg.EScore != 0 || msg.Score1 != 0 ||
+				msg.DScore2 != 0 || msg.EScore2 != 0 || msg.Score2 != 0
+
+			if hasScore {
+				cols = append(cols, "time_score")
+				args = append(args, now)
+			}
+			if msg.DScore != 0 {
+				cols = append(cols, "d")
+				args = append(args, msg.DScore)
+			}
+			if msg.EScore != 0 {
+				cols = append(cols, "e")
+				args = append(args, msg.EScore)
+			}
+			if msg.ND != 0 {
+				cols = append(cols, "nd")
+				args = append(args, msg.ND)
+			}
+			if msg.FinalScore != 0 {
+				cols = append(cols, "final_score")
+				args = append(args, msg.FinalScore)
+			}
+			if msg.Score1 != 0 {
+				cols = append(cols, "score1")
+				args = append(args, msg.Score1)
+			}
+			if msg.DScore2 != 0 {
+				cols = append(cols, "d2")
+				args = append(args, msg.DScore2)
+			}
+			if msg.EScore2 != 0 {
+				cols = append(cols, "e2")
+				args = append(args, msg.EScore2)
+			}
+			if msg.ND2 != 0 {
+				cols = append(cols, "nd2")
+				args = append(args, msg.ND2)
+			}
+			if msg.Score2 != 0 {
+				cols = append(cols, "score2")
+				args = append(args, msg.Score2)
+			}
+
+			placeholders := strings.Repeat("?,", len(cols))
+			placeholders = placeholders[:len(placeholders)-1] // trim trailing comma
+			query := "INSERT INTO routines (" + strings.Join(cols, ", ") + ") VALUES (" + placeholders + ")"
+			result, err := db.Exec(query, args...)
 			if err != nil {
 				log.Printf("saveEvent insert (no match) error: %v", err)
 			} else {
 				routineID, _ = result.LastInsertId()
 			}
 		}
-
 	default:
 		log.Printf("saveEvent: unhandled status %q, skipping", msg.Status)
 	}
