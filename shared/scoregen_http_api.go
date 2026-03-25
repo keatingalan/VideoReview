@@ -124,8 +124,8 @@ func parseCompetitorResponse(body string) (*CompetitorInfo, error) {
 	return info, nil
 }
 
-func proScoreHTTPPost(body string) (string, error) {
-	const url = "http://127.0.0.1:51514/proscore"
+func proScoreHTTPPost(body string, server string) (string, error) {
+	var url = "http://" + server + ":51514/proscore"
 	resp, err := http.Post(url, "text/plain", strings.NewReader(body))
 	if err != nil {
 		return "", fmt.Errorf("request failed: %w", err)
@@ -141,25 +141,25 @@ func proScoreHTTPPost(body string) (string, error) {
 	return string(raw), nil
 }
 
-func proScoreInit(keypadID string) (string, error) {
+func proScoreInit(keypadID string, server string) (string, error) {
 	body := fmt.Sprintf(
 		`FC=init;RE=4;ID:S=%d"%s";Batt:S=2"AK";Version:S=11"VideoReview";Cmd:S=4"init";`,
 		len(keypadID), keypadID,
 	)
-	raw, err := proScoreHTTPPost(body)
+	raw, err := proScoreHTTPPost(body, server)
 	if err != nil {
 		return "", err
 	}
 	return parseProScoreResponse(raw)["Event"], nil
 }
 
-func findKeypadID(apparatusName string) (string, error) {
+func findKeypadID(apparatusName string, server string) (string, error) {
 	apparatusKeypadIDMu.Lock()
 	knownID := apparatusKeypadID[apparatusName]
 	apparatusKeypadIDMu.Unlock()
 
 	if knownID != "" {
-		event, err := proScoreInit(knownID)
+		event, err := proScoreInit(knownID, server)
 		if err == nil && event == apparatusName {
 			return knownID, nil
 		}
@@ -168,7 +168,7 @@ func findKeypadID(apparatusName string) (string, error) {
 
 	for i := 0; i <= 0xff; i++ {
 		candidate := fmt.Sprintf("%02x", i)
-		event, err := proScoreInit(candidate)
+		event, err := proScoreInit(candidate, server)
 		if err != nil {
 			continue
 		}
@@ -187,8 +187,8 @@ func findKeypadID(apparatusName string) (string, error) {
 
 // GetCompetitorInfoByHTTP fetches detailed competitor scores from the local
 // ProScore HTTP API using a two-step init + getcompnum flow.
-func GetCompetitorInfoByHTTP(num string, group int, apparatusName string) (*CompetitorInfo, error) {
-	keypadID, err := findKeypadID(apparatusName)
+func GetCompetitorInfoByHTTP(num string, group int, apparatusName string, server string) (*CompetitorInfo, error) {
+	keypadID, err := findKeypadID(apparatusName, server)
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +196,7 @@ func GetCompetitorInfoByHTTP(num string, group int, apparatusName string) (*Comp
 		`FC=getcompnum;RE=5;ID:S=%d"%s";Batt:S=2"AK";Version:S=11"VideoReview";Num:I=%s;Group:I=%d;`,
 		len(keypadID), keypadID, num, group,
 	)
-	compRaw, err := proScoreHTTPPost(compBody)
+	compRaw, err := proScoreHTTPPost(compBody, server)
 	if err != nil {
 		return nil, fmt.Errorf("getcompnum request: %w", err)
 	}
@@ -207,7 +207,7 @@ func GetCompetitorInfoByHTTP(num string, group int, apparatusName string) (*Comp
 // for NewScore messages. It fetches detailed scores from the local ProScore
 // HTTP API and populates the message fields.
 func EnrichFromProScore(msg *ProScoreMessage) {
-	info, err := GetCompetitorInfoByHTTP(msg.Competitor, 1, msg.Apparatus)
+	info, err := GetCompetitorInfoByHTTP(msg.Competitor, 1, msg.Apparatus, msg.Server)
 	if err != nil {
 		//appendLog(fmt.Sprintf("GetCompetitorInfo warning: %v", err))
 		return
