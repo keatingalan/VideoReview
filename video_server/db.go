@@ -229,8 +229,9 @@ func saveEvent(msg ProScoreMessage) {
 	default:
 		log.Printf("saveEvent: unhandled status %q, skipping", msg.Status)
 	}
-
 	saveMessage(msg, routineID)
+	record, _ := readEvent(routineID)
+	hub.broadcast(record)
 }
 
 func scanRoutineRow(rows *sql.Rows) (EventMsg, error) {
@@ -316,7 +317,23 @@ func readEvents() ([]EventMsg, error) {
 	}
 	return events, rows.Err()
 }
-
+func readEvent(routineID int64) (EventMsg, error) {
+	rows, err := db.Query(`SELECT `+routineColumns+` FROM routines WHERE id = ? limit 1`, routineID)
+	if err != nil {
+		return EventMsg{}, err
+	}
+	defer rows.Close()
+	var event EventMsg
+	for rows.Next() {
+		e, err := scanRoutineRow(rows)
+		if err != nil {
+			log.Println("readEvent scan error:", err)
+			continue
+		}
+		event = e
+	}
+	return event, rows.Err()
+}
 func readScoredEvents() ([]EventMsg, error) {
 	rows, err := db.Query(`SELECT ` + routineColumns + `
 		FROM routines WHERE final_score IS NOT NULL ORDER BY time_start ASC`)

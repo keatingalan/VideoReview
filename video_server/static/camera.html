@@ -133,8 +133,17 @@ function getStream() {
   const videoSource = videoSelect.value;
   const constraints = {
     audio: (audioSource && audioSource !== 'none')
-      ? {deviceId: {exact: audioSource}}
-      : (audioSource === 'none' ? false : true),
+      	? {
+			deviceId: {exact: audioSource},
+			noiseSuppression: false,
+			echoCancellation: false,
+			autoGainControl: false
+		}
+      	: (audioSource === 'none' ? false : {
+			noiseSuppression: false,
+			echoCancellation: false,
+			autoGainControl: false
+		}),
     video: {deviceId: videoSource ? {exact: videoSource} : undefined}
   };
   return navigator.mediaDevices.getUserMedia(constraints).then(gotStream).catch(handleError);
@@ -167,8 +176,8 @@ function gotStream(stream) {
 	exportRecorder = new MediaRecorder(stream,options)
 	exportRecorder2 = new MediaRecorder(stream,options)
 	document.getElementById('heading').innerHTML="Ready"
-	exportRecorder.addEventListener('start',(e)=>{exportRecorder2.stop()}) //Stop the other recorder when this one starts
-	exportRecorder2.addEventListener('start',(e)=>{exportRecorder.stop()}) //Stop the other recorder when this one starts
+	//exportRecorder.addEventListener('start',(e)=>{exportRecorder2.stop();console.log("stopped1,started2")}) //Stop the other recorder when this one starts
+	//exportRecorder2.addEventListener('start',(e)=>{exportRecorder.stop();console.log("stopped2,started1")}) //Stop the other recorder when this one starts
 }
 
 function handleError(error) {
@@ -224,12 +233,14 @@ function startStopRecorder() {
 	}
 }
 function swapRecorders() {
-	if(exportRecorder.state=='recording') {
+    if (exportRecorder.state === 'recording') {
 		//Stop recorder 1 and start 2
-		exportRecorder2.start()
-	} else if(exportRecorder2.state=='recording') {
-		exportRecorder.start()
-	}
+        exportRecorder2.addEventListener('start', () => exportRecorder.stop(), { once: true });
+        exportRecorder2.start();
+    } else if (exportRecorder2.state === 'recording') {
+        exportRecorder.addEventListener('start', () => exportRecorder2.stop(), { once: true });
+        exportRecorder.start();
+    }
 }
 
 async function downloadExportRecording(data,length) {
@@ -319,7 +330,7 @@ function uploadAChunk() {
 		headers: headers,
 		body: chunksToUpload[0].data
 		}).then(response => {
-			if(response.status="200") {
+			if(response.status==200) {
 				//Chunk uploaded successfully, try next one
 				chunksToUpload.shift() //Drop this from the array
 				chunkUploadStatus=0 //Mark as stopped

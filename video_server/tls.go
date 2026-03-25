@@ -84,8 +84,8 @@ func loadOrCreateCert() tls.Certificate {
 type tlsErrorFilter struct{ w io.Writer }
 
 func (f tlsErrorFilter) Write(p []byte) (n int, err error) {
-	if strings.Contains(string(p), "TLS handshake error") &&
-		strings.Contains(string(p), "unknown certificate") {
+	if strings.Contains(string(p), "TLS handshake error") {
+		//&&strings.Contains(string(p), "unknown certificate") {
 		return len(p), nil
 	}
 	return f.w.Write(p)

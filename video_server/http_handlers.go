@@ -187,7 +187,6 @@ func handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	saveEvent(body)
-	hub.broadcast(body)
 	w.WriteHeader(200)
 }
 

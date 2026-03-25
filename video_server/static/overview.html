@@ -211,6 +211,174 @@
             }
         }
 
+
+        /* ── Event item alternating colours ── */
+        .vis-item.event-colour-0 {
+            background-color: #4a90d9;
+            border-color: #2a6aaa;
+            color: #fff;
+        }
+        .vis-item.event-colour-1 {
+            background-color: #7b5ea7;
+            border-color: #5a3d88;
+            color: #fff;
+        }
+        .vis-item.event-colour-2 {
+            background-color: #3aaa6e;
+            border-color: #1e8450;
+            color: #fff;
+        }
+        .vis-item.event-colour-3 {
+            background-color: #d4822a;
+            border-color: #aa5c0e;
+            color: #fff;
+        }
+        .vis-item.event-colour-4 {
+            background-color: #c0444c;
+            border-color: #922030;
+            color: #fff;
+        }
+        .vis-item.event-colour-5 {
+            background-color: #4aacb8;
+            border-color: #28808c;
+            color: #fff;
+        }
+
+        /* ── Overlap indicator stripe on right edge ── */
+        .vis-item.overlapping::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 6px;
+            height: 100%;
+            background: repeating-linear-gradient(
+                -45deg,
+                rgba(255,220,0,0.85) 0px,
+                rgba(255,220,0,0.85) 3px,
+                rgba(180,0,0,0.75) 3px,
+                rgba(180,0,0,0.75) 6px
+            );
+            border-radius: 0 3px 3px 0;
+            pointer-events: none;
+        }
+        /* Overlap badge top-left corner */
+        .vis-item.overlapping::before {
+            content: '⚠';
+            position: absolute;
+            top: -1px;
+            left: 2px;
+            font-size: 9px;
+            line-height: 1;
+            color: rgba(255,220,0,1);
+            text-shadow: 0 0 2px #000;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+         /* ── Video file items — filmstrip style ── */
+        .vis-item.video-file {
+            background-color: #6e6e6e;
+            border: 1px solid #333;
+            border-top-color: #555;
+            border-bottom-color: #555;
+            color: #ddd;
+            border-radius: 2px;
+            font-size: 74%;
+            opacity: 0.88;
+            /* Sprocket holes: repeating squares top and bottom */
+            background-image:
+                /* top sprocket row */
+                repeating-linear-gradient(
+                    90deg,
+                    transparent 0px, transparent 3px,
+                    #444 3px, #444 4px,
+                    transparent 4px, transparent 7px,
+                    #000 7px, #000 13px,
+                    transparent 13px, transparent 16px,
+                    #444 16px, #444 17px,
+                    transparent 17px, transparent 20px
+                ),
+                /* bottom sprocket row */
+                repeating-linear-gradient(
+                    90deg,
+                    transparent 0px, transparent 3px,
+                    #444 3px, #444 4px,
+                    transparent 4px, transparent 7px,
+                    #000 7px, #000 13px,
+                    transparent 13px, transparent 16px,
+                    #444 16px, #444 17px,
+                    transparent 17px, transparent 20px
+                ),
+                /* main film body */
+                linear-gradient(
+                    to bottom,
+                    #2a2a2a 0%, #1a1a1a 20%, #1a1a1a 80%, #2a2a2a 100%
+                );
+            background-size:
+                20px 5px,
+                20px 5px,
+                100% 100%;
+            background-position:
+                0px 0px,
+                0px bottom,
+                0px 0px;
+            background-repeat:
+                repeat-x,
+                repeat-x,
+                no-repeat;
+        }
+        .vis-item.video-file .vis-item-content {
+            padding: 2px 6px;
+            margin-top: 1px;
+            /* keep text in the middle strip, clear of sprocket rows */
+            white-space: nowrap;
+            overflow: hidden;
+        }
+        .vis-item.video-file.vis-selected {
+            background-color: #ff9900;
+            border-color: #ffcc44;
+            border-top-color: #ffe088;
+            border-bottom-color: #ffe088;
+            color: #000;
+            opacity: 1;
+            box-shadow: 0 0 0 2px #ffcc44, 0 0 10px 2px rgba(255,180,0,0.6);
+            background-image:
+                repeating-linear-gradient(
+                    90deg,
+                    transparent 0px, transparent 3px,
+                    rgba(0,0,0,0.35) 3px, rgba(0,0,0,0.35) 4px,
+                    transparent 4px, transparent 7px,
+                    rgba(0,0,0,0.55) 7px, rgba(0,0,0,0.55) 13px,
+                    transparent 13px, transparent 16px,
+                    rgba(0,0,0,0.35) 16px, rgba(0,0,0,0.35) 17px,
+                    transparent 17px, transparent 20px
+                ),
+                repeating-linear-gradient(
+                    90deg,
+                    transparent 0px, transparent 3px,
+                    rgba(0,0,0,0.35) 3px, rgba(0,0,0,0.35) 4px,
+                    transparent 4px, transparent 7px,
+                    rgba(0,0,0,0.55) 7px, rgba(0,0,0,0.55) 13px,
+                    transparent 13px, transparent 16px,
+                    rgba(0,0,0,0.35) 16px, rgba(0,0,0,0.35) 17px,
+                    transparent 17px, transparent 20px
+                ),
+                linear-gradient(to bottom, #ffb700 0%, #ff9900 20%, #ff9900 80%, #ffb700 100%);
+            background-size: 20px 5px, 20px 5px, 100% 100%;
+            background-position: 0px 0px, 0px bottom, 0px 0px;
+            background-repeat: repeat-x, repeat-x, no-repeat;
+        }
+        /* group label styling for video vs event rows */
+        .vis-label.video-group .vis-inner {
+            color: #7090bb;
+            font-style: italic;
+            font-size: 90%;
+        }
+        .vis-label.event-group .vis-inner {
+            font-weight: bold;
+            color: #222;
+        }
 	</style>
 
 
@@ -342,14 +510,17 @@
                         try{
                             groups.add({
                                 id:"V|"+v.camera_desc,
-                                content:v.camera_desc
+                                content:'📹 '+v.camera_desc,
+                                className:'video-group'
                             })
                         } catch(e) {/*ignore - probably just duplicate category*/}
                         items.add({
                             id:v.filename,
                             group:"V|"+v.camera_desc,
                             start:new Date(v.start_time),
-                            end:new Date(v.start_time+v.length)
+                            end:new Date(v.start_time+v.length),
+                            className:'video-file',
+                            title: v.filename
                         })
                     })
                 }
@@ -360,15 +531,16 @@
                 try{
                     groups.add({
                         id:"E|"+m.apparatus,
-                        content:m.apparatus
+                        content:m.apparatus,
+                        className:'event-group'
                     })
                 } catch(e) {/*ignore - probably just duplicate category*/}
                 items.add({
                     id:m.id,
                     group:"E|"+m.apparatus,
                     start:m.time_start,
-                    end:(m.time_stop?m.time_stop:m.time_start),
-                    type: (m.time_stop?'':'box'),
+                    end:(m.time_stop?m.time_stop:undefined),
+                    type: (m.time_stop-m.time_start>0?'':'box'),
                     //className: m.status,
                     content: 
                         //(m.status=='competing'?"&#x25B6;":(m.status='stopped'?"&#x25A0;":""))+
@@ -380,6 +552,7 @@
             setTimeout(()=>{
 				document.getElementById('loading-overlay').style.display = 'none' //Hide spinner
 				hideEmptyGroups()
+                assignEventColours()
 				},150)
             
         })
@@ -482,7 +655,44 @@
         // Re-set the groups on the timeline (this doesn’t remove items, just hides their groups)
         timeline.setGroups(visibleGroups);
     }
+// ── Assign alternating colours to event items and flag overlaps ──────────────
+    function assignEventColours() {
+        const NUM_COLOURS = 6;
+        // Group event items by their group id
+        const allItems = items.get().filter(item => !item.className || !item.className.includes('video-file'));
+        const byGroup = {};
+        allItems.forEach(item => {
+            if (!item.group) return;
+            if (!byGroup[item.group]) byGroup[item.group] = [];
+            byGroup[item.group].push(item);
+        });
 
+        Object.values(byGroup).forEach(groupItems => {
+            // Sort by start time
+            groupItems.sort((a, b) => new Date(a.start) - new Date(b.start));
+
+            groupItems.forEach((item, idx) => {
+                // Detect overlap with any previous item in the same group
+                const startA = new Date(item.start).getTime();
+                const endA   = item.end ? new Date(item.end).getTime() : startA;
+                let overlaps = false;
+                for (let j = 0; j < idx; j++) {
+                    const startB = new Date(groupItems[j].start).getTime();
+                    const endB   = groupItems[j].end ? new Date(groupItems[j].end).getTime() : startB;
+                    if (startA < endB && endA > startB) { overlaps = true; break; }
+                }
+
+                const colourClass = 'event-colour-' + (idx % NUM_COLOURS);
+                const overlapClass = overlaps ? ' overlapping' : '';
+                // Preserve any status class (competing/stopped) if present
+                const existingClass = item.className || '';
+                const statusMatch = existingClass.match(/\b(competing|stopped|scoring)\b/);
+                const statusClass = statusMatch ? ' ' + statusMatch[0] : '';
+
+                items.update({ id: item.id, className: colourClass + overlapClass + statusClass });
+            });
+        });
+    }
 
     // Set up timeline
     var items = new vis.DataSet([]);
@@ -821,10 +1031,19 @@
             tbody.innerHTML = '<tr><td colspan="8" style="color:#888;font-style:italic">No scores yet</td></tr>';
             return;
         }
+        //Remove duplicates (same id) that can occur when the same score is received via WebSocket and fetched via API at the same time, keeping the most recent one
+        recentScores.sort((a,b)=>b.time_score - a.time_score) // Sort by most recent score
+        const seenRoutines = new Set();
+        recentScores = recentScores.filter(m => {
+            if (seenRoutines.has(m.competitor+"|"+m.apparatus+"|"+m.server)) return false;
+            seenRoutines.add(m.competitor+"|"+m.apparatus+"|"+m.server);
+            return true;
+        });
+
         tbody.innerHTML = recentScores.map(m => {
             const statusClass = 'status-' + (m.status || '');
             const icon = m.status === 'competing' ? '&#x25B6; ' : m.status === 'stopped' ? '&#x25A0; ' : '';
-            return `<tr onclick="zoomToItem(${m.id})">
+            return `<tr id='score-${m.id}' onclick="zoomToItem(${m.id})">
                 <td>${m.apparatus || ''}</td>
                 <td>${m.competitor ?? ''}</td>
                 <td>${m.name || ''}${m.club ? ' (' + m.club + ')' : ''}</td>
@@ -850,7 +1069,7 @@
 
     // ── WebSocket – live event updates ────────────────────────────────────────
     //
-    // The Go server broadcasts JSON status messages on /ws whenever a UDP
+    // The server broadcasts JSON status messages on /ws whenever a UDP
     // message is received from a keypad or iPad controller.
     //
     // Message shape:
@@ -866,44 +1085,39 @@
     // }
 
     (function connectWebSocket() {
-        const ws = new WebSocket('wss://' + location.host + '/ws');
+        const ws = new WebSocket((window.location.protocol=="https:"?'wss://':'ws://') + location.host + '/ws'); 
 
         ws.addEventListener('open', () => {
             console.log('WebSocket connected');
         });
 
-        ws.addEventListener('score', (event) => {
+        ws.addEventListener('message', (event) => {
             let msg;
             try { msg = JSON.parse(event.data); } catch(e) { return; }
-
-            // Append to live table
-            recentScores.unshift(msg);
-            renderScoresTable();
-        })
-        ws.addEventListener('event', (event) => {
-            let msg;
-            try { msg = JSON.parse(event.data); } catch(e) { return; }
-
+            if (msg.time_score) {
+                // Append to live scores table
+                recentScores.unshift(msg);
+                renderScoresTable();
+            }
             // Also add to the vis timeline without a full reload
             try {
-                groups.add({ id: 'E|' + msg.apparatus, content: msg.apparatus });
+                groups.add({ id: 'E|' + msg.apparatus, content: msg.apparatus, className:'event-group' });
             } catch(e) { /* duplicate – ignore */ }
             try {
-                items.add({
-                    id: msg.time + msg.server + msg.apparatus,
+                items.update({
+                    id: msg.id,
                     group: 'E|' + msg.apparatus,
-                    start: msg.time,
-                    type: 'box',
-                    className: msg.status,
-                    content:
-                        (msg.status === 'competing' ? '&#x25B6;' : msg.status === 'stopped' ? '&#x25A0;' : '') +
-                        '<small> ' + msg.competitor + ' (' + msg.club + ') <br />' +
-                        msg.firstName + ' ' + msg.surname + '</small>',
-                    title: (msg.status === 'competing' ? '&#x25B6;' : msg.status === 'stopped' ? '&#x25A0;' : '') +
-                        '<small> ' + msg.competitor + ' (' + msg.club + ') <br />' +
-                        msg.firstName + ' ' + msg.surname + '</small>'
-                });
-            } catch(e) {}
+                    start:msg.time_start,
+                    end:(msg.time_stop?msg.time_stop:undefined),
+                    type: (msg.time_stop-msg.time_start>0?'':'box'),
+                    //className: m.status,
+                    content: 
+                        '<small>'+msg.competitor+" ("+msg.club+") <br />"+msg.name+'</small>',
+                    title: 
+                        '<small>'+msg.competitor+"<br />"+msg.club+"<br />"+msg.name+'</small>'
+                })
+                assignEventColours()
+            } catch(e) {            }
         });
 
         ws.addEventListener('close', () => {

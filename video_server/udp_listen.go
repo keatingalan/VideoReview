@@ -55,7 +55,6 @@ func listenUDP() {
 
 				log.Printf("%s @ %s - %s: %s", server, time.Now().Format("15:04:05"), msg.Apparatus, msg.Status)
 				saveEvent(msg)
-				hub.broadcast(msg)
 			}
 		}(conn, p)
 	}
