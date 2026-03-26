@@ -48,7 +48,8 @@
 		}
 		.flashing {animation: flash-animation 1s infinite alternate;}
 	</style>
-	<script src="EBML.js"></script>
+	<!--<script src="EBML.js"></script>/-->
+	<script src="webm-fix.js"></script>
 	<script src="jszip.js"></script>
 </head>
 
@@ -243,6 +244,7 @@ function swapRecorders() {
     }
 }
 
+
 async function downloadExportRecording(data,length) {
 	var date=new Date()
 	var filename
@@ -251,7 +253,8 @@ async function downloadExportRecording(data,length) {
 	if (MediaRecorder.isTypeSupported('video/webm')) {
 		filetype='video/webm'
 		//Add header type info for making seekable
-		data=await getSeekableBlobAsync(data)
+		//data=await getSeekableBlobAsync(data)
+		data=await fixWebM(data)
 		filename=filename_prefix+Date.now()+"!"+Math.round(length)+".webm"
 		
 	} else {

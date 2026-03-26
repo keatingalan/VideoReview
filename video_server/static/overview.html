@@ -890,8 +890,7 @@
         const readChunk = async (chunkSize, offset) => firstFile.slice(offset, offset + chunkSize)
         const result = await mi.analyzeData(firstFile.byteLength, readChunk)
         const mime = getMimeTypeAndCodecs(result);
-        recordedMime = mime;
-		
+       
         const mediaSource = new MediaSource();
         document.getElementById('player').src = URL.createObjectURL(mediaSource);
         setDownloadBtn('buffering');
