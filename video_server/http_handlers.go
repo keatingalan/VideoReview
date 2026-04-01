@@ -27,24 +27,49 @@ func handleVideoList(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		name := e.Name()
-		parts := strings.SplitN(name, "!", 3)
-		if len(parts) < 3 {
-			log.Println("Couldn't parse video filename:", name)
+
+		if strings.Contains(name, "!") {
+			// Continuous recording format: desc!endtime!length[.ext]
+			parts := strings.SplitN(name, "!", 3)
+			if len(parts) < 3 {
+				log.Println("Couldn't parse video filename:", name)
+				continue
+			}
+			endTime, _ := strconv.ParseInt(strings.Split(parts[1], ".")[0], 10, 64)
+			lengthStr := parts[2]
+			if idx := strings.Index(lengthStr, "."); idx >= 0 {
+				lengthStr = lengthStr[:idx]
+			}
+			length, _ := strconv.ParseInt(lengthStr, 10, 64)
+			files = append(files, VideoFile{
+				CameraDesc: parts[0],
+				Length:     length,
+				EndTime:    endTime,
+				StartTime:  endTime - length,
+				Filename:   name,
+			})
+		} else if strings.HasPrefix(name, "RoutineID_") {
+			// Triggered recording: RoutineID_<id>_<random>[.ext]
+			// e.g. RoutineID_42_a3f9bc.webm
+			base := strings.TrimSuffix(name, filepath.Ext(name))
+			parts := strings.SplitN(base, "_", 3) // ["RoutineID", "<id>", "<random>"]
+			if len(parts) < 2 {
+				log.Println("Couldn't parse RoutineID video filename:", name)
+				continue
+			}
+			routineID, err := strconv.ParseInt(parts[1], 10, 64)
+			if err != nil {
+				log.Println("Couldn't parse routine ID in filename:", name)
+				continue
+			}
+			files = append(files, VideoFile{
+				RoutineID: &routineID,
+				Filename:  name,
+			})
+		} else {
+			log.Println("Unrecognised video filename format:", name)
 			continue
 		}
-		endTime, _ := strconv.ParseInt(strings.Split(parts[1], ".")[0], 10, 64)
-		lengthStr := parts[2]
-		if idx := strings.Index(lengthStr, "."); idx >= 0 {
-			lengthStr = lengthStr[:idx]
-		}
-		length, _ := strconv.ParseInt(lengthStr, 10, 64)
-		files = append(files, VideoFile{
-			CameraDesc: parts[0],
-			Length:     length,
-			EndTime:    endTime,
-			StartTime:  endTime - length,
-			Filename:   name,
-		})
 	}
 
 	sort.Slice(files, func(i, j int) bool {
@@ -69,7 +94,13 @@ func handleCameraList(w http.ResponseWriter, r *http.Request) {
 	seen := make(map[string]bool)
 	var cameras []string
 	for _, e := range entries {
-		cam := strings.SplitN(e.Name(), "!", 2)[0]
+		name := e.Name()
+		var cam string
+		if strings.Contains(name, "!") {
+			cam = strings.SplitN(name, "!", 2)[0]
+		} else {
+			continue
+		}
 		if !seen[cam] {
 			seen[cam] = true
 			cameras = append(cameras, cam)

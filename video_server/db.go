@@ -76,9 +76,30 @@ func saveMessage(msg ProScoreMessage, routineID int64) {
 
 func saveEvent(msg ProScoreMessage) {
 	var routineID int64
+	var existingID int64
+
+	const tenMin = int64(10 * 60 * 1000)
+	windowStart := msg.Time - tenMin
 
 	switch msg.Status {
 	case "competing":
+
+		var existingID int64
+		err := db.QueryRow(`SELECT id FROM routines
+			WHERE (competitor = ? OR ? = '') AND apparatus = ? AND server = ?
+			  AND (
+			    (time_stop IS NULL AND time_score IS NULL)
+			  )
+			  AND time_start >= ?
+			ORDER BY time_start DESC LIMIT 1`,
+			msg.Competitor, msg.Competitor, msg.Apparatus, msg.Server,
+			msg.Time-int64(1000), windowStart,
+		).Scan(&existingID)
+		if existingID != 0 {
+			println("Not saving start - routine already running")
+			println(msg.FullMessage)
+			return
+		} //Don't insert - likely duplicate
 		result, err := db.Exec(`INSERT INTO routines
 			(server, apparatus, competitor, name, club, time_start)
 			VALUES (?,?,?,?,?,?)`,
@@ -92,11 +113,16 @@ func saveEvent(msg ProScoreMessage) {
 		}
 
 	case "stopped", "scoring":
-		const tenMin = int64(10 * 60 * 1000)
-		windowStart := msg.Time - tenMin
-		now := msg.Time
+		if msg.Competitor == "" {
 
-		var existingID int64
+			hub.broadcast(EventMsg{
+				Server:    msg.Server,
+				Apparatus: msg.Apparatus,
+				Status:    msg.Status,
+			})
+			return
+		} // Don't save if we don't have a competitor ID to match on; this is likely a non-score update that arrived before the "NowUp" with competitor info.
+
 		err := db.QueryRow(`SELECT id FROM routines
 			WHERE (competitor = ? OR ? = '') AND apparatus = ? AND server = ?
 			  AND (
@@ -111,14 +137,14 @@ func saveEvent(msg ProScoreMessage) {
 
 		if err == nil {
 			setClauses := []string{"time_stop = COALESCE(time_stop, ?)"}
-			args := []any{now}
+			args := []any{msg.Time}
 
 			hasScore := msg.FinalScore != 0 || msg.DScore != 0 || msg.EScore != 0 || msg.Score1 != 0 ||
 				msg.DScore2 != 0 || msg.EScore2 != 0 || msg.Score2 != 0
 
 			if hasScore {
 				setClauses = append(setClauses, "time_score = COALESCE(time_score, ?)")
-				args = append(args, now)
+				args = append(args, msg.Time)
 			}
 			if msg.DScore != 0 {
 				setClauses = append(setClauses, "d = COALESCE(d, ?)")
@@ -170,14 +196,14 @@ func saveEvent(msg ProScoreMessage) {
 			args := []any{msg.Server, msg.Apparatus, msg.Competitor, msg.Name, msg.Club, msg.Time}
 
 			cols = append(cols, "time_stop")
-			args = append(args, now)
+			args = append(args, msg.Time)
 
 			hasScore := msg.FinalScore != 0 || msg.DScore != 0 || msg.EScore != 0 || msg.Score1 != 0 ||
 				msg.DScore2 != 0 || msg.EScore2 != 0 || msg.Score2 != 0
 
 			if hasScore {
 				cols = append(cols, "time_score")
-				args = append(args, now)
+				args = append(args, msg.Time)
 			}
 			if msg.DScore != 0 {
 				cols = append(cols, "d")

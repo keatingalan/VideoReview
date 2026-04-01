@@ -44,7 +44,7 @@ func listenUDP() {
 				var parseErr error
 				switch port {
 				case ipadUDPPort:
-					msg, parseErr = shared.ParseXMLMessage(server, data, nil)
+					msg, parseErr = shared.ParseXMLMessage(server, data, shared.EnrichFromProScore)
 				default:
 					msg, parseErr = shared.ParseCSVMessage(server, data)
 				}

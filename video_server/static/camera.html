@@ -26,15 +26,17 @@
 				  left:1vw;
 				  background-color: grey;
 				  margin-bottom: 3em;
+				  z-index: 1;
 		}
-		input { text-align: center;	}
+		input , select { text-align: center; border-radius: 0.5em;}
 		div#clock {font-size:85%; text-align:center; width: 6em;}	
 		button {text-align: center;  border-radius:0.5em; }
-		button#startStop {text-align: center; width:12em; height: 1.6em; font-size:125%; border-radius:1em; transition: border-width 0.2s ease, box-shadow 0.2s ease;}
-		button#startStop:hover { box-shadow: 0 0 5px teal; }
-		select#cameralist {float:right; width:40vw; height: 1.4em}
-		input#description {width: 24em; height: 1.4em; }
-		select#audiolist {width:40vw; height: 1.4em}
+		button#startStop {text-align: center; width:16em; height: 1.6em; font-size:125%; border-radius:1em; transition: border-width 0.2s ease, box-shadow 0.2s ease;}
+		button:hover { box-shadow: 0 0 5px teal; }
+		button#startStopTriggered {text-align: center; width:16em; height: 1.6em; font-size:125%; border-radius:1em; transition: border-width 0.2s ease, box-shadow 0.2s ease;}
+		select#cameralist {min-width:15em; height: 1.4em}
+		input#description {min-width: 15em; height: 1.4em; }
+		select#audiolist {min-width:15em; height: 1.4em}
 		input#server {width: 8em;margin-right:2em;}
 		select#apparatus {width: 8em; font-size: 120%;text-align:center}
 		div#headerrow {display:flex; justify-content: space-between; align-items: center;}
@@ -47,31 +49,84 @@
 			100% { background-color: rgb(162, 172, 182); }
 		}
 		.flashing {animation: flash-animation 1s infinite alternate;}
+		div#setupFields {
+			display:flex;
+			flex-wrap:wrap;
+			justify-content: space-evenly;
+			width:98vw;
+			position:absolute;
+			z-index: 100;
+		}
+		div#setupFields > div {
+			flex: 1;
+			padding: 0 1em;
+			border: 1px solid teal;
+			border-radius: 0.5em;
+			margin: 0.5em;
+			background-color: rgba(162, 172, 182,0.7);
+			max-width: 30em;
+		}
+		div#setupFields >div>* {
+			width:100%;
+		}
+		div#videoContainer {
+			position: absolute;
+			width: 98vw;
+			height: calc(100% - 12em);
+			left:1vw;
+		}
+		[hidden]{
+			display:none !important;
+		}
 	</style>
-	<!--<script src="EBML.js"></script>/-->
-	<script src="webm-fix.js"></script>
+	<script src="EBML.js"></script>
+	<!--<script src="ebml.min.js"></script>/-->
+	<!--<script src="webm-fix.js"></script>/-->
 	<script src="jszip.js"></script>
 </head>
 
 <body id='body'>
-	<div id='setupFields'>
-		<select id='cameralist'></select>
-		<select id='audiolist'><option value='none'>None</option></select>
-		<hr />
-		<label for="description">Camera Description</label><input id="description" type="text" value="" placeholder="A unique description of this camera's subject" />
-	</div>
 	<div id='headerrow'>
 		<h1 id="heading">Loading</h1>
-		<button onclick='startStopRecorder()' id='startStop'>&#9679; Start Recording</button>
+		<button onclick='startStopRecorder()' id='startStop'>&#9679; Start Continuous Recording</button>
+		<button onclick='startStopTriggeredRecorder()' id='startStopTriggered'>&#9679; Start Triggered Recording</button>
 		<div id='clock' style='font-size: 1.5em'>&nbsp;</div>
 	</div>
+
 	<div id='videoContainer'>
+		<div id='setupFields'>
+			<div>
+				<label for="cameralist">Video Device</label>
+				<select id='cameralist'></select>
+				<label for="audiolist">Audio Device</label>
+				<select id='audiolist'><option value='none'>No Audio</option></select>
+			</div>
+			<div>
+				<label for="description">Continuous Recording Camera Name</label>
+				<input id="description" type="text" value="" placeholder="A unique description of this camera's subject" />
+				<label for="dontrecord">Do not record if gymnast name includes: <span title='If gymnast name includes this text/character, continuous recording will pause and triggered recording will not start when the gymnast is selected on the selected apparatus and server.'>&#9432;</span></label>
+				<input id="dontrecord" type="text" value="#" />
+			</div>
+			<div>
+				<label for="apparatus">Apparatus <span title='Filters messages for triggered recording and for pausing continuous recording because of gymnast without photo permission.'>&#9432;</span></label>
+				<select id='apparatus'>
+					<option value='Vault'>Vault</option>
+					<option value='Bars'>Bars</option>
+					<option value='Beam'>Beam</option>
+					<option value='Floor'>Floor</option>
+				</select>
+				<label for="ScoreGenServer">ScoreGen Server <span title="If blank will take any messages. To filter to only one Scoregen server, type it's IP address here (e.g. 192.168.100.138).">&#9432;</span></label>
+				<input id='ScoreGenServer' type='text' value="" placeholder="IP address, or blank for any" />
+			</div>
+		</div>
+		
 		<video id='videoPlayer' autoplay='true' playsinline muted="true"></video>
 	</div>
 	<div id='progress'>
 		<progress id="uploadProgress" max="100" value="0"></progress>
 		<label for="uploadProgress" id="uploadProgressLabel">Upload remaining</label>
 	</div>
+	<button onclick="if(document.getElementById('setupFields').hidden) {document.getElementById('setupFields').hidden=false} else {document.getElementById('setupFields').hidden=true}" style="position: fixed; bottom:2px; right:5vw; z-index: 100;">&#9881;</button>
 	<div id="uploadZip">
 		<label style="font-size: 80%;">Load zip file of videos that failed to upload 
 			<br />
@@ -138,12 +193,14 @@ function getStream() {
 			deviceId: {exact: audioSource},
 			noiseSuppression: false,
 			echoCancellation: false,
-			autoGainControl: false
+			autoGainControl: false,
+			voiceIsolation: false
 		}
       	: (audioSource === 'none' ? false : {
 			noiseSuppression: false,
 			echoCancellation: false,
-			autoGainControl: false
+			autoGainControl: false,
+			voiceIsolation: false
 		}),
     video: {deviceId: videoSource ? {exact: videoSource} : undefined}
   };
@@ -176,6 +233,7 @@ function gotStream(stream) {
 	}
 	exportRecorder = new MediaRecorder(stream,options)
 	exportRecorder2 = new MediaRecorder(stream,options)
+	triggeredRecorder = new MediaRecorder(stream,options)
 	document.getElementById('heading').innerHTML="Ready"
 	//exportRecorder.addEventListener('start',(e)=>{exportRecorder2.stop();console.log("stopped1,started2")}) //Stop the other recorder when this one starts
 	//exportRecorder2.addEventListener('start',(e)=>{exportRecorder.stop();console.log("stopped2,started1")}) //Stop the other recorder when this one starts
@@ -190,12 +248,28 @@ function hasGetUserMedia() {
 		navigator.mediaDevices.getUserMedia);
 }
 
-var exportRecorder,exportRecorder2
+var exportRecorder,exportRecorder2,triggeredRecorder
 
 setInterval(updateScreen,500);
 function updateScreen() {
 	time=new Date()
 	document.getElementById("clock").innerHTML=time.toTimeString().substr(0,8)
+	try  {
+		if(exportRecorder.state=='recording'||exportRecorder2.state=='recording'||triggeredRecorder.state=='recording') {
+			try {document.getElementById('body').classList.add('recording')} catch(e) {}
+			document.getElementById('heading').innerHTML="Recording"		
+		} else {
+			try {document.getElementById('body').classList.remove('recording')} catch(e) {}
+			if(continuousRecordingEnabled) {
+				document.getElementById('heading').innerHTML="Paused"
+			} else {
+				document.getElementById('heading').innerHTML="Ready"
+			}
+		}
+	} catch (e){
+			try {document.getElementById('body').classList.remove('recording')} catch(e) {}
+			document.getElementById('heading').innerHTML="Loading"
+	}
 }
 
 function logStatus(message) {
@@ -207,12 +281,13 @@ const recordingLength=30000 //ms
 var recorder1start
 var recorder2start
 var filename_prefix="video"
+var continuousRecordingEnabled=false
 function startStopRecorder() {
-	if(exportRecorder.state=='recording'||exportRecorder2.state=='recording') {
+	if(exportRecorder.state=='recording'||exportRecorder2.state=='recording'||continuousRecordingEnabled) {
 		window.clearInterval(timer)
 		exportRecorder.stop()
 		exportRecorder2.stop()
-		document.getElementById('startStop').innerHTML="&#9679; Start Recording"
+		document.getElementById('startStop').innerHTML="&#9679; Start Continuous Recording"
 		document.getElementById('heading').innerHTML="Ready"
 		try {document.getElementById('body').classList.remove('recording')} catch(e) {}
 		document.getElementById('setupFields').hidden=false
@@ -222,10 +297,11 @@ function startStopRecorder() {
 		exportRecorder2.addEventListener('start', (e)=>{recorder2start=e.timeStamp})
 		filename_prefix=document.getElementById('description').value.replace("!","")+"!"//+Date.now()//+"+"+recordingLength+"x"
 		numFiles=0
+		continuousRecordingEnabled=true
 		exportRecorder.start()//recordingLength) //Make it in short chunks
 		timer=window.setInterval(swapRecorders,recordingLength)
 		//window.setTimeout(swapRecorders,2000) //Make 2s chunk first to test before walking away
-		document.getElementById('startStop').innerHTML="&#9632; Stop Recording"
+		document.getElementById('startStop').innerHTML="&#9632; Stop Continuous Recording"
 		document.getElementById('heading').innerHTML="Recording"// "+filename_prefix
 		exportRecorder.addEventListener('dataavailable', (e)=>{downloadExportRecording(e.data,e.timeStamp-recorder1start)})
 		exportRecorder2.addEventListener('dataavailable', (e)=>{downloadExportRecording(e.data,e.timeStamp-recorder2start)})
@@ -243,22 +319,37 @@ function swapRecorders() {
         exportRecorder.start();
     }
 }
+var triggeredRecorderEnabled=false
+function startStopTriggeredRecorder() {
+	if(triggeredRecorderEnabled) {
+		try{triggeredRecorder.stop()} catch(e) {}
+		triggeredRecorderEnabled=false
+		document.getElementById('startStopTriggered').innerHTML="&#9679; Start Triggered Recording"
+		document.getElementById('setupFields').hidden=false
+	} else {
+		//if(document.getElementById('description').value=='') {alert('No description entered - must be unique at this time');return;}
+		numFiles=0
+		triggeredRecorderEnabled=true
+		document.getElementById('startStopTriggered').innerHTML="&#9632; Stop Triggered Recording"
+		document.getElementById('setupFields').hidden=true
+	}
+}
 
-
-async function downloadExportRecording(data,length) {
+async function downloadExportRecording(data,length=0,filename="") {
 	var date=new Date()
-	var filename
 	var filetype
 	var duration
 	if (MediaRecorder.isTypeSupported('video/webm')) {
 		filetype='video/webm'
 		//Add header type info for making seekable
-		//data=await getSeekableBlobAsync(data)
-		data=await fixWebM(data)
-		filename=filename_prefix+Date.now()+"!"+Math.round(length)+".webm"
-		
+		data=await getSeekableBlobAsync(data)
+		//data=await fixWebM(data)
+		//data=await repairWebm(data)
+		if(!filename) {filename=filename_prefix+Date.now()+"!"+Math.round(length)+".webm"}
+		else {filename=filename+".webm"}
 	} else {
-		filename=filename_prefix+Date.now()+"!"+Math.round(length)+".mp4"
+		if(!filename) {filename=filename_prefix+Date.now()+"!"+Math.round(length)+".mp4"}
+		else {filename=filename+".mp4"}
 		filetype='video/mp4'
 	}
 	uploadByChunking(new Blob([data],{type: filetype}), filename)
@@ -288,7 +379,6 @@ function uploadByChunking(file,filename) {
 	var from=0
 	var chunkNo=0
 	const numChunks = Math.ceil(file.size / chunkSize)
-	console.log("numChunks",numChunks)
 	while(to<file.size) {
 		from = chunkNo * chunkSize;
     	to = (chunkNo + 1) * chunkSize >= file.size ? file.size : from + chunkSize;
@@ -302,8 +392,6 @@ function uploadByChunking(file,filename) {
 		uploadSizeTotal=uploadSizeTotal+to-from
 		chunkNo=chunkNo+1
 	}
-	console.log(chunkNo)
-
 	//Start uploading if not in progress
 	if(chunkUploadStatus==0) uploadAChunk()
 	updateUploadStatus()
@@ -457,6 +545,252 @@ document.getElementById('zipfile').onchange=(e)=>{
 			})
 		})
     }
+}
+    // ── WebSocket – live event updates ────────────────────────────────────────
+    //
+    // The server broadcasts JSON status messages on /ws whenever a UDP
+    // message is received from a keypad or iPad controller.
+    //
+    // Message shape:
+    // {
+    //   server:     "192.168.1.x",   // source IP
+    //   status:     "competing" | "stopped" | "scoring" | "ready",
+    //   apparatus:  "Vault" | "Bars" | "Beam" | "Floor",
+    //   competitor: "42",
+    //   firstName:  "Jane",
+    //   surname:    "Doe",
+    //   club:       "TST",
+    //   time:       1718000000000    // Unix ms
+    // }
+
+    (function connectWebSocket() {
+        const ws = new WebSocket((window.location.protocol=="https:"?'wss://':'ws://') + location.host + '/ws'); 
+
+        ws.addEventListener('open', () => {
+            console.log('WebSocket connected');
+        });
+
+        ws.addEventListener('message', (event) => {
+            let msg;
+            try { msg = JSON.parse(event.data); } catch(e) { return; }
+			if(triggeredRecorderEnabled) {
+				//Start or stop triggered recordings
+				if(msg.status=="competing" 
+							&& msg.apparatus==document.getElementById('apparatus').value
+							&& (document.getElementById('ScoreGenServer').value=="" || msg.server==document.getElementById('ScoreGenServer').value)
+						) {
+					try{triggeredRecorder.stop();} catch(e) {} //Stop if already recording for some reason
+					triggeredRecorder.addEventListener('dataavailable', (e)=>{
+						downloadExportRecording(e.data,null,"RoutineID_"+msg.id+"_"+Array.from({length:6}, () => 'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random()*36)]).join(''))},{once:true})
+					//Not sure if adding new listener will be too fast. Might need to add a short delay before starting recording to ensure listener is added before data is available. Or could add the listener when we start the triggered recording, but then need to make sure filename is correct.
+					triggeredRecorder.start()
+				} else if (msg.status!="competing" && msg.apparatus==document.getElementById('apparatus').value) {
+					triggeredRecorder.stop()
+				}
+			}
+			if(continuousRecordingEnabled) {
+				//Stop continuous recording if gymnast name includes the text in "dontrecord" field
+				if(msg.status=="competing" 
+							&& document.getElementById('dontrecord').value 
+							&& msg.name && msg.name.includes(document.getElementById('dontrecord').value) 
+							&& msg.apparatus==document.getElementById('apparatus').value
+							&& (document.getElementById('ScoreGenServer').value=="" || msg.server==document.getElementById('ScoreGenServer').value)
+						) {
+					//This routine shouldn't be recorded	
+					try{
+						if(exportRecorder.state=='recording') exportRecorder.stop()
+						if(exportRecorder2.state=='recording') exportRecorder2.stop()
+					} catch(e) {console.error("Couldn't stop recording",e)}
+				} else {
+					//If it was recording before and not now, restart recorder 1 (then will swap since timer still going)
+					if(exportRecorder.state!='recording' && exportRecorder2.state!='recording') exportRecorder.start()
+				}
+			}
+            
+		});
+
+        ws.addEventListener('close', () => {
+            console.log('WebSocket closed – reconnecting in 3 s');
+            setTimeout(connectWebSocket, 3000);
+        });
+
+        ws.addEventListener('error', (e) => {
+            console.warn('WebSocket error', e);
+            ws.close();
+        });
+    })();
+
+
+//Fix webm
+async function repairWebm(blob) {
+  const buffer = await blob.arrayBuffer();
+  const decoder = new EBML.Decoder();
+  const encoder = new EBML.Encoder();
+  const tools = EBML.tools;
+  const elms = decoder.decode(buffer);
+
+  let trackEntries = [];
+  let currentTrack = null;
+  let blocks = [];
+  let currentClusterTime = 0;
+
+  // ---- PARSE ----
+  for (const elm of elms) {
+    if (elm.type === "m" && elm.name === "TrackEntry" && !elm.isEnd) {
+      currentTrack = [];
+      trackEntries.push(currentTrack);
+      continue;
+    }
+    if (elm.type === "m" && elm.name === "TrackEntry" && elm.isEnd) {
+      currentTrack = null;
+      continue;
+    }
+    if (currentTrack) {
+      currentTrack.push({ name: elm.name, type: elm.type, data: elm.data });
+    }
+    if (elm.name === "Timecode") currentClusterTime = elm.value || 0;
+    if (elm.name === "SimpleBlock" || elm.name === "Block") {
+      const parsed = tools.readBlock(elm.data);
+      blocks.push({
+        trackNumber: parsed.trackNumber,
+        timecode: parsed.timecode + currentClusterTime,
+        keyframe: parsed.keyframe,
+        frame: parsed.frames[0]
+      });
+    }
+  }
+
+  if (blocks.length === 0) return blob;
+
+  // ---- SORT & FIX TIMELINE ----
+  blocks.sort((a,b) => a.timecode - b.timecode);
+  let time = 0;
+  const DEFAULT_FRAME = 33;
+  const fixedBlocks = blocks.map((b,i) => {
+    let delta = DEFAULT_FRAME;
+    if(i>0){
+      const diff = blocks[i].timecode - blocks[i-1].timecode;
+      if(diff>0 && diff<1000) delta=diff;
+    }
+    const out = {...b, newTime: time};
+    time += delta;
+    return out;
+  });
+  const duration = time;
+
+  // ---- BUILD CLUSTERS ----
+  const CLUSTER_MAX = 5000;
+  let clusters=[], current=null;
+  fixedBlocks.forEach(block=>{
+    if(!current || block.newTime - current.start > CLUSTER_MAX){
+      current={start:block.newTime, blocks:[]};
+      clusters.push(current);
+    }
+    current.blocks.push(block);
+  });
+
+  // ---- HELPERS ----
+  function uintToBytesBE(num, byteLength=4){
+    const arr = new Uint8Array(byteLength);
+    for(let i=0;i<byteLength;i++){
+      arr[byteLength-1-i]=num&0xff;
+      num=num>>8;
+    }
+    return arr;
+  }
+  function floatToBytes(num){
+    const buf = new ArrayBuffer(4);
+    new DataView(buf).setFloat32(0,num,false);
+    return new Uint8Array(buf);
+  }
+  function createSimpleBlock({trackNumber,timecode,keyframe,frame}){
+    const trackVint = 0x80 | trackNumber;
+    const tc = new DataView(new ArrayBuffer(2));
+    tc.setInt16(0,timecode,false);
+    const flags = keyframe ? 0x80 : 0x00;
+    const out = new Uint8Array(1+2+1+frame.length);
+    out[0]=trackVint;
+    out.set(new Uint8Array(tc.buffer),1);
+    out[3]=flags;
+    out.set(new Uint8Array(frame),4);
+    return out;
+  }
+
+  // ---- BUILD OUTPUT ----
+  let elmsOut = [];
+
+  // EBML header
+  elmsOut.push(
+    {name:"EBML", type:"m", isEnd:false},
+    {name:"EBMLVersion", type:"u", data:uintToBytesBE(1,1)},
+    {name:"EBMLReadVersion", type:"u", data:uintToBytesBE(1,1)},
+    {name:"DocType", type:"s", data:"webm"},
+    {name:"DocTypeVersion", type:"u", data:uintToBytesBE(4,1)},
+    {name:"DocTypeReadVersion", type:"u", data:uintToBytesBE(2,1)},
+    {name:"EBML", type:"m", isEnd:true}
+  );
+
+  // Segment
+  elmsOut.push({name:"Segment", type:"m", isEnd:false});
+
+  // Info with explicit IDs
+  elmsOut.push({name:"Info", type:"m", isEnd:false});
+  elmsOut.push({name:"TimecodeScale", type:"b", data:uintToBytesBE(1000000,4), id: new Uint8Array([0x2A,0xD7,0xB1])});
+  elmsOut.push({name:"Duration", type:"b", data:floatToBytes(duration), id:new Uint8Array([0x44,0x89])});
+  elmsOut.push({name:"Info", type:"m", isEnd:true});
+
+  // Tracks
+  elmsOut.push({name:"Tracks", type:"m", isEnd:false});
+  trackEntries.forEach(entry=>{
+    elmsOut.push({name:"TrackEntry", type:"m", isEnd:false});
+    entry.forEach(e=>elmsOut.push({name:e.name,type:e.type,data:e.data}));
+    elmsOut.push({name:"TrackEntry", type:"m", isEnd:true});
+  });
+  elmsOut.push({name:"Tracks", type:"m", isEnd:true});
+
+  // Clusters
+  clusters.forEach(cluster=>{
+    elmsOut.push({name:"Cluster", type:"m", isEnd:false});
+    elmsOut.push({name:"Timecode", type:"b", data:uintToBytesBE(Math.round(cluster.start),2), id:new Uint8Array([0xE7])});
+    cluster.blocks.forEach(b=>{
+      elmsOut.push({name:"SimpleBlock", type:"b", data:createSimpleBlock({
+        trackNumber:b.trackNumber,
+        timecode:Math.round(b.newTime - cluster.start),
+        keyframe:b.keyframe,
+        frame:b.frame
+      })});
+    });
+    elmsOut.push({name:"Cluster", type:"m", isEnd:true});
+  });
+
+  elmsOut.push({name:"Segment", type:"m", isEnd:true});
+
+  const fixedBuffer = new Uint8Array(encoder.encode(elmsOut));
+  return new Blob([fixedBuffer],{type:"video/webm"});
+}
+// Create a SimpleBlock (Uint8Array) from components
+function createSimpleBlock({ trackNumber, timecode, keyframe, frame }) {
+  // --- EBML VINT TRACK HEADER ---
+  // EBML trackNumber VINT = 0x80 | trackNumber
+  // e.g., track 1 → 0x81
+  const trackVint = 0x80 | trackNumber;
+
+  // --- 2‑byte timecode (signed big endian) ---
+  const tc = new DataView(new ArrayBuffer(2));
+  tc.setInt16(0, timecode, false);
+
+  // --- Flags ---
+  // Keyframe bit = 0x80, invisible=0, lacing=0, discardable=0
+  const flags = keyframe ? 0x80 : 0x00;
+
+  // Combine into a single Uint8Array
+  const out = new Uint8Array(1 + 2 + 1 + frame.length);
+  out[0] = trackVint;
+  out.set(new Uint8Array(tc.buffer), 1);
+  out[3] = flags;
+  out.set(new Uint8Array(frame), 4);
+
+  return out;
 }
 </script>
 </html>

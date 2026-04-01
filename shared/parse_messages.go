@@ -196,7 +196,11 @@ func ParseXMLMessage(server, data string, enrichScore func(*ProScoreMessage)) (P
 		switch rootName {
 		case "NowUp":
 			attrs := xmlAttrs(child)
-			msg.Status = "competing"
+			if attrs["Num"] == "" {
+				msg.Status = "stopped" //Gives empty nowup if cancel a score
+			} else {
+				msg.Status = "competing"
+			}
 			msg.Apparatus = attrs["Event"]
 			msg.Competitor = attrs["Num"]
 			msg.Name = strings.TrimSpace(attrs["FName"] + " " + attrs["LName"])
