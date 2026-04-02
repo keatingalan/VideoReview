@@ -220,20 +220,3 @@ func handleEvents(w http.ResponseWriter, r *http.Request) {
 	saveEvent(body)
 	w.WriteHeader(200)
 }
-
-func handleWS(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		return
-	}
-	hub.register(conn)
-	defer func() {
-		hub.unregister(conn)
-		conn.Close()
-	}()
-	for {
-		if _, _, err := conn.ReadMessage(); err != nil {
-			break
-		}
-	}
-}

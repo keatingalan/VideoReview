@@ -313,9 +313,9 @@ func scanRoutineRow(rows *sql.Rows) (EventMsg, error) {
 	}
 	switch {
 	case e.TimeScore != nil || e.TimeScore2 != nil:
-		e.Status = "scoring"
-	case e.TimeStop != nil:
 		e.Status = "stopped"
+	case e.TimeStop != nil:
+		e.Status = "scoring"
 	default:
 		e.Status = "competing"
 	}

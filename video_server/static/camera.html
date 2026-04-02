@@ -564,233 +564,127 @@ document.getElementById('zipfile').onchange=(e)=>{
     // }
 
     (function connectWebSocket() {
-        const ws = new WebSocket((window.location.protocol=="https:"?'wss://':'ws://') + location.host + '/ws'); 
+        // Messages received while disconnected are queued and replayed on reconnect.
+        // The server must echo back each message with a matching `seq` so we can
+        // dequeue it; messages without seq (e.g. pings) are processed but not queued.
+        const pendingMsgs = [];   // {seq, data} waiting for server ack
+        let seqCounter = 0;
+        let ws = null;
+        let reconnectDelay = 500;   // ms; doubles on each failure up to maxDelay
+        const maxDelay = 10000;
+        let pingTimer = null;
+        let pongTimeout = null;
+        const PING_INTERVAL = 15000;  // send a ping every 15 s
+        const PONG_WAIT    = 5000;    // if no pong within 5 s, assume dead and reconnect
 
-        ws.addEventListener('open', () => {
-            console.log('WebSocket connected');
-        });
+        function processMsg(msg) {
+            if(triggeredRecorderEnabled) {
+                //Start or stop triggered recordings
+                if(msg.status=="competing" 
+                            && msg.apparatus==document.getElementById('apparatus').value
+                            && (document.getElementById('ScoreGenServer').value=="" || msg.server==document.getElementById('ScoreGenServer').value)
+							&& (!document.getElementById('dontrecord').value || !msg.name || !msg.name.includes(document.getElementById('dontrecord').value)) 
+                        ) {
+                    try{triggeredRecorder.stop();} catch(e) {} //Stop if already recording for some reason
+                    triggeredRecorder.addEventListener('dataavailable', (e)=>{
+                        downloadExportRecording(e.data,null,"RoutineID_"+msg.id+"_"+Array.from({length:6}, () => 'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random()*36)]).join(''))},{once:true})
+                    triggeredRecorder.start()
+					console.info("Started triggered recording for "+msg.name+" on "+msg.apparatus,msg)
+                } else if (msg.status!="competing" && msg.apparatus==document.getElementById('apparatus').value) {
+                    triggeredRecorder.stop()
+                }
+            }
+            if(continuousRecordingEnabled) {
+                //Stop continuous recording if gymnast name includes the text in "dontrecord" field
+                if(msg.status=="competing" 
+                            && document.getElementById('dontrecord').value 
+                            && msg.name && msg.name.includes(document.getElementById('dontrecord').value) 
+                            && msg.apparatus==document.getElementById('apparatus').value
+                            && (document.getElementById('ScoreGenServer').value=="" || msg.server==document.getElementById('ScoreGenServer').value)
+                        ) {
+                    //This routine shouldn't be recorded	
+					console.info("Pausing continuous recording for "+msg.name+" on "+msg.apparatus,msg)
+                    try{
+                        if(exportRecorder.state=='recording') exportRecorder.stop()
+                        if(exportRecorder2.state=='recording') exportRecorder2.stop()
+                    } catch(e) {console.error("Couldn't stop recording",e)}
+                } else {
+                    //If it was recording before and not now, restart recorder 1 (then will swap since timer still going)
+                    if(exportRecorder.state!='recording' && exportRecorder2.state!='recording') {
+						exportRecorder.start()
+						console.info("Continuous recording restarted",msg)
+					} 
+                }
+            }
+        }
 
-        ws.addEventListener('message', (event) => {
-            let msg;
-            try { msg = JSON.parse(event.data); } catch(e) { return; }
-			if(triggeredRecorderEnabled) {
-				//Start or stop triggered recordings
-				if(msg.status=="competing" 
-							&& msg.apparatus==document.getElementById('apparatus').value
-							&& (document.getElementById('ScoreGenServer').value=="" || msg.server==document.getElementById('ScoreGenServer').value)
-						) {
-					try{triggeredRecorder.stop();} catch(e) {} //Stop if already recording for some reason
-					triggeredRecorder.addEventListener('dataavailable', (e)=>{
-						downloadExportRecording(e.data,null,"RoutineID_"+msg.id+"_"+Array.from({length:6}, () => 'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random()*36)]).join(''))},{once:true})
-					//Not sure if adding new listener will be too fast. Might need to add a short delay before starting recording to ensure listener is added before data is available. Or could add the listener when we start the triggered recording, but then need to make sure filename is correct.
-					triggeredRecorder.start()
-				} else if (msg.status!="competing" && msg.apparatus==document.getElementById('apparatus').value) {
-					triggeredRecorder.stop()
-				}
-			}
-			if(continuousRecordingEnabled) {
-				//Stop continuous recording if gymnast name includes the text in "dontrecord" field
-				if(msg.status=="competing" 
-							&& document.getElementById('dontrecord').value 
-							&& msg.name && msg.name.includes(document.getElementById('dontrecord').value) 
-							&& msg.apparatus==document.getElementById('apparatus').value
-							&& (document.getElementById('ScoreGenServer').value=="" || msg.server==document.getElementById('ScoreGenServer').value)
-						) {
-					//This routine shouldn't be recorded	
-					try{
-						if(exportRecorder.state=='recording') exportRecorder.stop()
-						if(exportRecorder2.state=='recording') exportRecorder2.stop()
-					} catch(e) {console.error("Couldn't stop recording",e)}
-				} else {
-					//If it was recording before and not now, restart recorder 1 (then will swap since timer still going)
-					if(exportRecorder.state!='recording' && exportRecorder2.state!='recording') exportRecorder.start()
-				}
-			}
-            
-		});
+        function startPing() {
+            clearInterval(pingTimer);
+            pingTimer = setInterval(() => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({type: 'ping'}));
+                    // If pong doesn't arrive in time, force a reconnect
+                    pongTimeout = setTimeout(() => {
+                        console.warn('WebSocket pong timeout – reconnecting');
+                        ws.close();
+                    }, PONG_WAIT);
+                }
+            }, PING_INTERVAL);
+        }
 
-        ws.addEventListener('close', () => {
-            console.log('WebSocket closed – reconnecting in 3 s');
-            setTimeout(connectWebSocket, 3000);
-        });
+        function stopPing() {
+            clearInterval(pingTimer);
+            clearTimeout(pongTimeout);
+        }
 
-        ws.addEventListener('error', (e) => {
-            console.warn('WebSocket error', e);
-            ws.close();
-        });
+        function connect() {
+            ws = new WebSocket((window.location.protocol=="https:"?'wss://':'ws://') + location.host + '/ws');
+
+            ws.addEventListener('open', () => {
+                console.log('WebSocket connected');
+                reconnectDelay = 500; // reset backoff on successful connect
+                startPing();
+                // Replay any messages that weren't acked before the last disconnect
+                pendingMsgs.forEach(({data}) => {
+                    try { ws.send(data); } catch(e) {}
+                });
+            });
+
+            ws.addEventListener('message', (event) => {
+                let msg;
+                try { msg = JSON.parse(event.data); } catch(e) { return; }
+
+                // Handle pong — cancel the dead-connection timeout
+                if (msg.type === 'pong') {
+                    clearTimeout(pongTimeout);
+                    return;
+                }
+
+                // Handle ack from server for a message we sent
+                if (msg.type === 'ack' && msg.seq != null) {
+                    const idx = pendingMsgs.findIndex(m => m.seq === msg.seq);
+                    if (idx !== -1) pendingMsgs.splice(idx, 1);
+                    return;
+                }
+
+                processMsg(msg);
+            });
+
+            ws.addEventListener('close', () => {
+                stopPing();
+                console.log(`WebSocket closed – reconnecting in ${reconnectDelay} ms`);
+                setTimeout(connect, reconnectDelay);
+                reconnectDelay = Math.min(reconnectDelay * 2, maxDelay);
+            });
+
+            ws.addEventListener('error', (e) => {
+                console.warn('WebSocket error', e);
+                ws.close(); // triggers close handler above
+            });
+        }
+
+        connect();
     })();
 
-
-//Fix webm
-async function repairWebm(blob) {
-  const buffer = await blob.arrayBuffer();
-  const decoder = new EBML.Decoder();
-  const encoder = new EBML.Encoder();
-  const tools = EBML.tools;
-  const elms = decoder.decode(buffer);
-
-  let trackEntries = [];
-  let currentTrack = null;
-  let blocks = [];
-  let currentClusterTime = 0;
-
-  // ---- PARSE ----
-  for (const elm of elms) {
-    if (elm.type === "m" && elm.name === "TrackEntry" && !elm.isEnd) {
-      currentTrack = [];
-      trackEntries.push(currentTrack);
-      continue;
-    }
-    if (elm.type === "m" && elm.name === "TrackEntry" && elm.isEnd) {
-      currentTrack = null;
-      continue;
-    }
-    if (currentTrack) {
-      currentTrack.push({ name: elm.name, type: elm.type, data: elm.data });
-    }
-    if (elm.name === "Timecode") currentClusterTime = elm.value || 0;
-    if (elm.name === "SimpleBlock" || elm.name === "Block") {
-      const parsed = tools.readBlock(elm.data);
-      blocks.push({
-        trackNumber: parsed.trackNumber,
-        timecode: parsed.timecode + currentClusterTime,
-        keyframe: parsed.keyframe,
-        frame: parsed.frames[0]
-      });
-    }
-  }
-
-  if (blocks.length === 0) return blob;
-
-  // ---- SORT & FIX TIMELINE ----
-  blocks.sort((a,b) => a.timecode - b.timecode);
-  let time = 0;
-  const DEFAULT_FRAME = 33;
-  const fixedBlocks = blocks.map((b,i) => {
-    let delta = DEFAULT_FRAME;
-    if(i>0){
-      const diff = blocks[i].timecode - blocks[i-1].timecode;
-      if(diff>0 && diff<1000) delta=diff;
-    }
-    const out = {...b, newTime: time};
-    time += delta;
-    return out;
-  });
-  const duration = time;
-
-  // ---- BUILD CLUSTERS ----
-  const CLUSTER_MAX = 5000;
-  let clusters=[], current=null;
-  fixedBlocks.forEach(block=>{
-    if(!current || block.newTime - current.start > CLUSTER_MAX){
-      current={start:block.newTime, blocks:[]};
-      clusters.push(current);
-    }
-    current.blocks.push(block);
-  });
-
-  // ---- HELPERS ----
-  function uintToBytesBE(num, byteLength=4){
-    const arr = new Uint8Array(byteLength);
-    for(let i=0;i<byteLength;i++){
-      arr[byteLength-1-i]=num&0xff;
-      num=num>>8;
-    }
-    return arr;
-  }
-  function floatToBytes(num){
-    const buf = new ArrayBuffer(4);
-    new DataView(buf).setFloat32(0,num,false);
-    return new Uint8Array(buf);
-  }
-  function createSimpleBlock({trackNumber,timecode,keyframe,frame}){
-    const trackVint = 0x80 | trackNumber;
-    const tc = new DataView(new ArrayBuffer(2));
-    tc.setInt16(0,timecode,false);
-    const flags = keyframe ? 0x80 : 0x00;
-    const out = new Uint8Array(1+2+1+frame.length);
-    out[0]=trackVint;
-    out.set(new Uint8Array(tc.buffer),1);
-    out[3]=flags;
-    out.set(new Uint8Array(frame),4);
-    return out;
-  }
-
-  // ---- BUILD OUTPUT ----
-  let elmsOut = [];
-
-  // EBML header
-  elmsOut.push(
-    {name:"EBML", type:"m", isEnd:false},
-    {name:"EBMLVersion", type:"u", data:uintToBytesBE(1,1)},
-    {name:"EBMLReadVersion", type:"u", data:uintToBytesBE(1,1)},
-    {name:"DocType", type:"s", data:"webm"},
-    {name:"DocTypeVersion", type:"u", data:uintToBytesBE(4,1)},
-    {name:"DocTypeReadVersion", type:"u", data:uintToBytesBE(2,1)},
-    {name:"EBML", type:"m", isEnd:true}
-  );
-
-  // Segment
-  elmsOut.push({name:"Segment", type:"m", isEnd:false});
-
-  // Info with explicit IDs
-  elmsOut.push({name:"Info", type:"m", isEnd:false});
-  elmsOut.push({name:"TimecodeScale", type:"b", data:uintToBytesBE(1000000,4), id: new Uint8Array([0x2A,0xD7,0xB1])});
-  elmsOut.push({name:"Duration", type:"b", data:floatToBytes(duration), id:new Uint8Array([0x44,0x89])});
-  elmsOut.push({name:"Info", type:"m", isEnd:true});
-
-  // Tracks
-  elmsOut.push({name:"Tracks", type:"m", isEnd:false});
-  trackEntries.forEach(entry=>{
-    elmsOut.push({name:"TrackEntry", type:"m", isEnd:false});
-    entry.forEach(e=>elmsOut.push({name:e.name,type:e.type,data:e.data}));
-    elmsOut.push({name:"TrackEntry", type:"m", isEnd:true});
-  });
-  elmsOut.push({name:"Tracks", type:"m", isEnd:true});
-
-  // Clusters
-  clusters.forEach(cluster=>{
-    elmsOut.push({name:"Cluster", type:"m", isEnd:false});
-    elmsOut.push({name:"Timecode", type:"b", data:uintToBytesBE(Math.round(cluster.start),2), id:new Uint8Array([0xE7])});
-    cluster.blocks.forEach(b=>{
-      elmsOut.push({name:"SimpleBlock", type:"b", data:createSimpleBlock({
-        trackNumber:b.trackNumber,
-        timecode:Math.round(b.newTime - cluster.start),
-        keyframe:b.keyframe,
-        frame:b.frame
-      })});
-    });
-    elmsOut.push({name:"Cluster", type:"m", isEnd:true});
-  });
-
-  elmsOut.push({name:"Segment", type:"m", isEnd:true});
-
-  const fixedBuffer = new Uint8Array(encoder.encode(elmsOut));
-  return new Blob([fixedBuffer],{type:"video/webm"});
-}
-// Create a SimpleBlock (Uint8Array) from components
-function createSimpleBlock({ trackNumber, timecode, keyframe, frame }) {
-  // --- EBML VINT TRACK HEADER ---
-  // EBML trackNumber VINT = 0x80 | trackNumber
-  // e.g., track 1 → 0x81
-  const trackVint = 0x80 | trackNumber;
-
-  // --- 2‑byte timecode (signed big endian) ---
-  const tc = new DataView(new ArrayBuffer(2));
-  tc.setInt16(0, timecode, false);
-
-  // --- Flags ---
-  // Keyframe bit = 0x80, invisible=0, lacing=0, discardable=0
-  const flags = keyframe ? 0x80 : 0x00;
-
-  // Combine into a single Uint8Array
-  const out = new Uint8Array(1 + 2 + 1 + frame.length);
-  out[0] = trackVint;
-  out.set(new Uint8Array(tc.buffer), 1);
-  out[3] = flags;
-  out.set(new Uint8Array(frame), 4);
-
-  return out;
-}
 </script>
 </html>

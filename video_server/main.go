@@ -58,7 +58,7 @@ func main() {
 	staticHandler := http.FileServer(http.FS(staticFS))
 
 	registerShared := func(mux *http.ServeMux) {
-		mux.HandleFunc("/ws", handleWS)
+		mux.HandleFunc("/ws", wsHandler)
 		mux.HandleFunc("/ip", handleIP)
 		mux.HandleFunc("/events", handleEvents)
 		mux.HandleFunc("/videolist", handleVideoList)

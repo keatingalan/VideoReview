@@ -35,7 +35,8 @@ func ParseCSVMessage(server, data string) (ProScoreMessage, error) {
 		}
 		switch fields[1] {
 		case "0":
-			msg.Status = "scoring"
+			//Can't remember why this was like this. msg.Status = "scoring"
+			msg.Status = "competing"
 		case "1":
 			msg.Status = "competing"
 		default:
