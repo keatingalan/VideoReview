@@ -244,76 +244,44 @@
             color: #fff;
         }
 
-        /* ── Overlap indicator stripe on right edge ── */
-        .vis-item.overlapping::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            right: 0;
-            width: 6px;
-            height: 100%;
-            background: repeating-linear-gradient(
-                -45deg,
-                rgba(255,220,0,0.85) 0px,
-                rgba(255,220,0,0.85) 3px,
-                rgba(180,0,0,0.75) 3px,
-                rgba(180,0,0,0.75) 6px
-            );
-            border-radius: 0 3px 3px 0;
-            pointer-events: none;
-        }
-        /* Overlap badge top-left corner */
-        .vis-item.overlapping::before {
-            content: '⚠';
-            position: absolute;
-            top: -1px;
-            left: 2px;
-            font-size: 9px;
-            line-height: 1;
-            color: rgba(255,220,0,1);
-            text-shadow: 0 0 2px #000;
-            pointer-events: none;
-            z-index: 1;
-        }
-
          /* ── Video file items — filmstrip style ── */
         .vis-item.video-file {
-            background-color: #6e6e6e;
-            border: 1px solid #333;
-            border-top-color: #555;
-            border-bottom-color: #555;
-            color: #ddd;
+            background-color: #7a8a9a;
+            border: 1px solid #4a5a6a;
+            border-top-color: #8a9aaa;
+            border-bottom-color: #8a9aaa;
+            color: #fff;
             border-radius: 2px;
             font-size: 74%;
-            opacity: 0.88;
+            opacity: 0.95;
             /* Sprocket holes: repeating squares top and bottom */
             background-image:
                 /* top sprocket row */
                 repeating-linear-gradient(
                     90deg,
                     transparent 0px, transparent 3px,
-                    #444 3px, #444 4px,
+                    rgba(255,255,255,0.25) 3px, rgba(255,255,255,0.25) 4px,
                     transparent 4px, transparent 7px,
-                    #000 7px, #000 13px,
+                    rgba(0,0,0,0.5) 7px, rgba(0,0,0,0.5) 13px,
                     transparent 13px, transparent 16px,
-                    #444 16px, #444 17px,
+                    rgba(255,255,255,0.25) 16px, rgba(255,255,255,0.25) 17px,
                     transparent 17px, transparent 20px
                 ),
                 /* bottom sprocket row */
                 repeating-linear-gradient(
                     90deg,
                     transparent 0px, transparent 3px,
-                    #444 3px, #444 4px,
+                    rgba(255,255,255,0.25) 3px, rgba(255,255,255,0.25) 4px,
                     transparent 4px, transparent 7px,
-                    #000 7px, #000 13px,
+                    rgba(0,0,0,0.5) 7px, rgba(0,0,0,0.5) 13px,
                     transparent 13px, transparent 16px,
-                    #444 16px, #444 17px,
+                    rgba(255,255,255,0.25) 16px, rgba(255,255,255,0.25) 17px,
                     transparent 17px, transparent 20px
                 ),
                 /* main film body */
                 linear-gradient(
                     to bottom,
-                    #2a2a2a 0%, #1a1a1a 20%, #1a1a1a 80%, #2a2a2a 100%
+                    #8a9aaa 0%, #6a7a8a 20%, #6a7a8a 80%, #8a9aaa 100%
                 );
             background-size:
                 20px 5px,
@@ -393,6 +361,7 @@
             <button onclick="alert('To play back video, find the time desired, and select the appropriate blocks of video footage (on touch screens, tap the start and long hold the end; on computer, click the first then hold shift to click the end). Then click the Load and Play button.\nTo download/save part of a video, click the Record button at the top right during playback.')"><svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px" fill="#1f1f1f"><path d="M480-240q20 0 34-14t14-34q0-20-14-34t-34-14q-20 0-34 14t-14 34q0 20 14 34t34 14Zm-36-153h73q0-37 6.5-52.5T555-485q35-34 48.5-58t13.5-53q0-55-37.5-89.5T484-720q-51 0-88.5 27T343-620l65 27q9-28 28.5-43.5T482-652q28 0 46 16t18 42q0 23-15.5 41T496-518q-35 32-43.5 52.5T444-393Zm36 297q-79 0-149-30t-122.5-82.5Q156-261 126-331T96-480q0-80 30-149.5t82.5-122Q261-804 331-834t149-30q80 0 149.5 30t122 82.5Q804-699 834-629.5T864-480q0 79-30 149t-82.5 122.5Q699-156 629.5-126T480-96Zm0-72q130 0 221-91t91-221q0-130-91-221t-221-91q-130 0-221 91t-91 221q0 130 91 221t221 91Zm0-312Z"/></svg>Help</button>
             <button onclick="showImageModal('/cameraQR','')">Camera QR code <svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px" fill="#1f1f1f"><path d="M288-336h288v-21q0-39.06-39.6-63.03T432-444q-64 0-104 23.97T288-357v21Zm144.5-144q29.49 0 50.5-21.5 21-21.5 21-51 0-29.49-21-50.5-21.01-21-50.5-21-29.5 0-51 21-21.5 21.01-21.5 50.5 0 29.5 21.5 51t51 21.5ZM216-192q-29 0-50.5-21.5T144-264v-432q0-29.7 21.5-50.85Q187-768 216-768h432q29.7 0 50.85 21.15Q720-725.7 720-696v168l144-144v384L720-432v168q0 29-21.15 50.5T648-192H216Zm0-72h432v-432H216v432Zm0 0v-432 432Z"/></svg></button>
             <button onclick="showImageModal('/overviewQR','overview')">Viewer QR code <svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px" fill="#1f1f1f"><path d="M264-192q-10.2 0-17.1-6.9-6.9-6.9-6.9-17.1v-24h-96q-19.8 0-33.9-14.1Q96-268.2 96-288v-432q0-19.8 14.1-33.9Q124.2-768 144-768h672q19.8 0 33.9 14.1Q864-739.8 864-720v432q0 19.8-14.1 33.9Q835.8-240 816-240h-96v23.86q0 10.14-6.9 17.14t-17.1 7H264Zm-120-96h672v-432H144v432Zm96-98h480L566-591 445.89-437.25l-85.78-102.5L240-386Zm-96 98v-432 432Z"/></svg></button>
+            <button onclick="window.location.href='/scoring-listener.exe'">Download ScoreGen Listener</button>
             <button onclick="setTimelineWindow()">Zoom to day</button>
             <label style="float:right">
                 Event to find: <input id="eventdesc" type="text" onkeydown="if (event.key === 'Enter') {findEvent();}" />
@@ -492,47 +461,23 @@
         //Now put in the events:
         fetch('/eventlist')
         .then(data=>data.json())
-        .then(data=> { 
+        .then(async data=> { 
             //Clear out timeline
             items.clear()
             groups.clear()
             //Add standard apparatus so they're in order
-            groups.add({ id:"E|Vault", content:"Vault" })
-            groups.add({ id:"E|Bars", content:"Bars" })
-            groups.add({ id:"E|Beam", content:"Beam" })
-            groups.add({ id:"E|Floor", content:"Floor" })
-            //start fetching videos
-            fetch('/videolist')
-            .then(data=>data.json())
-            .then(data=> { 
-                if (data!=null) {
-                    data.forEach(v=>{
-                        try{
-                            groups.add({
-                                id:"V|"+v.camera_desc,
-                                content:'📹 '+v.camera_desc,
-                                className:'video-group'
-                            })
-                        } catch(e) {/*ignore - probably just duplicate category*/}
-                        items.add({
-                            id:v.filename,
-                            group:"V|"+v.camera_desc,
-                            start:new Date(v.start_time),
-                            end:new Date(v.start_time+v.length),
-                            className:'video-file',
-                            title: v.filename
-                        })
-                    })
-                }
-            })
-        
+            groups.add({ id:"E|Vault", content:"Vault", subgroupStack:true })
+            groups.add({ id:"E|Bars", content:"Bars", subgroupStack:true })
+            groups.add({ id:"E|Beam", content:"Beam", subgroupStack:true })
+            groups.add({ id:"E|Floor", content:"Floor", subgroupStack:true })
             //Show routines
-            data.forEach(m=>{
+            await Promise.all(data.map(async (m) => {
                 try{
                     groups.add({
-                        id:"E|"+m.apparatus,
+                        id:"E|"+m.apparatus, //Should we split by server?
                         content:m.apparatus,
-                        className:'event-group'
+                        className:'event-group',
+                        subgroupStack:true
                     })
                 } catch(e) {/*ignore - probably just duplicate category*/}
                 items.add({
@@ -548,13 +493,43 @@
                     title: 
                         '<small>'+m.competitor+"<br />"+m.club+"<br />"+m.name+'</small>'
                 })
-            })
-            setTimeout(()=>{
-				document.getElementById('loading-overlay').style.display = 'none' //Hide spinner
-				hideEmptyGroups()
-                assignEventColours()
-				},150)
+            }))
             
+            //start fetching videos
+            fetch('/videolist')
+            .then(data=>data.json())
+            .then(data=> { 
+                if (data!=null) {
+                    data.forEach(v=>{
+                        if(v.camera_desc!=null) {
+                            //Continuous recording, put on timeline
+                            try{
+                                groups.add({
+                                    id:"V|"+v.camera_desc,
+                                    content:'📹 '+v.camera_desc,
+                                    className:'video-group'
+                                })
+                            } catch(e) {/*ignore - probably just duplicate category*/}
+                            items.add({
+                                id:v.filename,
+                                group:"V|"+v.camera_desc,
+                                start:new Date(v.start_time),
+                                end:new Date(v.start_time+v.length),
+                                className:'video-file',
+                                title: v.filename
+                            })
+                        } else if (v.routine_id!=null) {
+                            //Routine video, put as child of routine
+                            items.update({ id: v.routine_id, content: `<span class="play-btn" data-video="${v.filename}" style="font-weight:bold;cursor:pointer;border: 1px solid grey">&#x23F5;</span> ` + items.get(v.routine_id).content });
+                        }
+                    })
+                }
+                setTimeout(()=>{
+                    document.getElementById('loading-overlay').style.display = 'none' //Hide spinner
+                    hideEmptyGroups()
+                    assignEventColours()
+                    },150)
+            })            
         })
     }
     filterVideos=()=>{
@@ -655,7 +630,7 @@
         // Re-set the groups on the timeline (this doesn’t remove items, just hides their groups)
         timeline.setGroups(visibleGroups);
     }
-// ── Assign alternating colours to event items and flag overlaps ──────────────
+// ── Assign alternating colours to event items ──────────────
     function assignEventColours() {
         const NUM_COLOURS = 6;
         // Group event items by their group id
@@ -672,24 +647,13 @@
             groupItems.sort((a, b) => new Date(a.start) - new Date(b.start));
 
             groupItems.forEach((item, idx) => {
-                // Detect overlap with any previous item in the same group
-                const startA = new Date(item.start).getTime();
-                const endA   = item.end ? new Date(item.end).getTime() : startA;
-                let overlaps = false;
-                for (let j = 0; j < idx; j++) {
-                    const startB = new Date(groupItems[j].start).getTime();
-                    const endB   = groupItems[j].end ? new Date(groupItems[j].end).getTime() : startB;
-                    if (startA < endB && endA > startB) { overlaps = true; break; }
-                }
-
                 const colourClass = 'event-colour-' + (idx % NUM_COLOURS);
-                const overlapClass = overlaps ? ' overlapping' : '';
                 // Preserve any status class (competing/stopped) if present
                 const existingClass = item.className || '';
                 const statusMatch = existingClass.match(/\b(competing|stopped|scoring)\b/);
                 const statusClass = statusMatch ? ' ' + statusMatch[0] : '';
 
-                items.update({ id: item.id, className: colourClass + overlapClass + statusClass });
+                items.update({ id: item.id, className: colourClass + statusClass });
             });
         });
     }
@@ -697,9 +661,34 @@
     // Set up timeline
     var items = new vis.DataSet([]);
     var groups = new vis.DataSet([]);
-    var timeline = new vis.Timeline(document.getElementById('timeline'), items,groups, {minHeight:'300px',zoomMin:1000*60,zoomKey:'ctrlKey',showCurrentTime:true,selectable:true,multiselect:true,sequentialSelection:true,multiselectPerGroup:true,stack:false,start:new Date().setHours(7,30,0,0),end:new Date().setHours(20,30,0,0)});
+    var timeline = new vis.Timeline(
+        document.getElementById('timeline'), 
+        items,
+        groups, 
+        {
+            minHeight:'300px',
+            zoomMin:1000*60,
+            zoomKey:'ctrlKey',
+            showCurrentTime:true,
+            selectable:true,
+            multiselect:true,
+            sequentialSelection:true,
+            multiselectPerGroup:true,
+            stack:false,
+            start:new Date().setHours(7,30,0,0),
+            end:new Date().setHours(20,30,0,0),
+            xss:{disabled:true}
+        });
     timeline.on('rangechanged', function () {
         hideEmptyGroups();
+    });
+    // Delegated handler for play buttons injected into timeline items
+    document.getElementById('timeline').addEventListener('click', function(e) {
+        var btn = e.target.closest('.play-btn');
+        if (btn) {
+            document.getElementById('player').src = '/video/' + btn.dataset.video;
+            switchTab('video');
+        }
     });
 	setTimelineWindow()
     
@@ -885,7 +874,8 @@
         try {timeline.removeCustomTime()} catch(e){}
 		timeline.addCustomTime(playbackStartTime)
 
-		const firstFile = await fetchVideoFile(videosToAppend.shift());
+		const firstFilename = videosToAppend.shift();
+        const firstFile = await fetchVideoFile(firstFilename);
         const mi = await MediaInfo.mediaInfoFactory({locateFile:(path,prefix)=>{return '/MediaInfoModule.wasm'}});
         const readChunk = async (chunkSize, offset) => firstFile.slice(offset, offset + chunkSize)
         const result = await mi.analyzeData(firstFile.byteLength, readChunk)
@@ -897,11 +887,25 @@
 		
         mediaSource.addEventListener('sourceopen', async () => {
             const sourceBuffer = mediaSource.addSourceBuffer(mime);
-            sourceBuffer.mode = 'sequence';
+            sourceBuffer.mode = 'segments';
 
             // Track whether all chunks (including queued ones) have been appended
             let remainingAtStart = videosToAppend.length + 1; // +1 for firstFile
             let appended = 0;
+
+            // Start time of the first file — defines t=0 in the MSE timeline
+            const firstFileStartTime = Number(firstFilename.split('!')[1]) - Number(firstFilename.split('!')[2].split('.')[0]);
+
+            // Returns the MSE timestampOffset (seconds) for a given filename
+            function mseOffsetForFile(filename) {
+                try {
+                    const fileStartTime = Number(filename.split('!')[1]) - Number(filename.split('!')[2].split('.')[0]);
+                    return (fileStartTime - firstFileStartTime) / 1000;
+                } catch(e) {
+                    return 0;
+                }
+            }
+
 
             function onChunkAppended(chunk) {
                 recordedChunks.push(chunk);
@@ -919,13 +923,15 @@
                         }
                         return;
                     }
-                    const chunk = await fetchVideoFile(videosToAppend.shift());
+                    const filename = videosToAppend.shift();
+                    const chunk = await fetchVideoFile(filename);
                     onChunkAppended(chunk);
+                    sourceBuffer.timestampOffset = mseOffsetForFile(filename);
                     sourceBuffer.appendBuffer(chunk);
                 }
             }
             sourceBuffer.addEventListener('updateend', appendNext);
-
+            sourceBuffer.timestampOffset = 0; // First file always starts at t=0
             onChunkAppended(firstFile);
             sourceBuffer.appendBuffer(firstFile);
         });

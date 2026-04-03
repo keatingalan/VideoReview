@@ -47,6 +47,12 @@
  *   import { fixWebM } from './webm-fix.js';
  *   const fixedBlob = await fixWebM(rawBlob);
  *
+ * Or as a drop-in MediaRecorder wrapper:
+ *   import { WebMRecorder } from './webm-fix.js';
+ *   const rec = new WebMRecorder(stream);
+ *   rec.start();
+ *   rec.stop();
+ *   const blob = await rec.getFixedBlob();
  */
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -302,7 +308,7 @@ function scanTrackEntry(buf, view, start, size, result) {
     try { idR = readID(buf, start + i); i += idR.width; } catch { break; }
     try { szR = readVint(buf, start + i); i += szR.width; } catch { break; }
     switch (idR.id) {
-      case ID.TRACK_NUMBER: t.number  = readVint(buf, start + i).value; break;
+      case ID.TRACK_NUMBER: t.number  = readUint(buf, start + i, szR.value); break;
       case ID.TRACK_TYPE:   {
         const tt = readUint(buf, start + i, szR.value);
         t.isAudio = tt === TRACK_TYPE_AUDIO;
@@ -376,7 +382,6 @@ class Rewriter {
 
     // Per-track state for audio PTS rewriting
     this.audioSamples = new Map();      // trackNum → cumulative sample count
-    this.trackPrevTS  = new Map();      // trackNum → previous absolute TS
 
     // Cues collected during cluster rewriting
     this.cuePoints    = [];             // [{cueTime, cueTrack, clusterOffset}]
@@ -668,7 +673,11 @@ class Rewriter {
     // Audio: recompute from sample counter.
     const newAbsTS = this.computeNewAudioTS(track);
     const newRelTS = newAbsTS - fixedClusterTS;
-    this.advanceSamples(track, origAbsTS);
+
+    // Extract Opus payload (after tracknum vint + 2-byte TS + 1-byte flags)
+    const payloadStart = tnR.width + 3;
+    const payload = data.length > payloadStart ? data.subarray(payloadStart) : null;
+    this.advanceSamples(track, payload);
 
     const out = new Uint8Array(data);
     const tsBytes = encodeInt16(newRelTS);
@@ -701,17 +710,9 @@ class Rewriter {
     return Math.round(samples / track.sampleRate * 1e9 / this.sr.timestampScale);
   }
 
-  advanceSamples(track, absTS) {
-    const prevTS = this.trackPrevTS.get(track.number);
-    this.trackPrevTS.set(track.number, absTS);
-    const prev   = this.audioSamples.get(track.number) || 0;
-    if (prevTS === undefined) {
-      this.audioSamples.set(track.number, prev + defaultOpusFrameSamples(track.sampleRate));
-      return;
-    }
-    const deltaTicks = Math.max(0, absTS - prevTS);
-    const deltaSec   = deltaTicks * this.sr.timestampScale / 1e9;
-    const samples    = Math.round(deltaSec * track.sampleRate) || defaultOpusFrameSamples(track.sampleRate);
+  advanceSamples(track, opusPayload) {
+    const prev    = this.audioSamples.get(track.number) || 0;
+    const samples = opusSamplesInBlock(opusPayload, track.sampleRate);
     this.audioSamples.set(track.number, prev + samples);
   }
 
@@ -800,7 +801,54 @@ function encode8ByteVint(v) {
   return out;
 }
 
-function defaultOpusFrameSamples(sr) { return Math.round(sr * 0.020); }
+/**
+ * Parse an Opus packet (WebM block payload, after the 4-byte WebM block header)
+ * and return the total number of PCM samples it contains.
+ *
+ * Opus TOC byte layout:
+ *   bits 7-3 : config (0-31) → frame duration lookup
+ *   bit  2   : stereo flag
+ *   bits 1-0 : code
+ *     0 = 1 frame
+ *     1 = 2 frames, equal size
+ *     2 = 2 frames, different size
+ *     3 = CBR/VBR multi-frame, next byte = frame count (M)
+ *
+ * Frame duration by config:
+ *   0-3   → 10ms   (NB SILK)
+ *   4-7   → 20ms
+ *   8-11  → 40ms
+ *   12-15 → 60ms
+ *   16-19 → 2.5ms  (CELT)
+ *   20-23 → 5ms
+ *   24-27 → 10ms
+ *   28-31 → 20ms
+ */
+function opusSamplesInBlock(payload, sampleRate) {
+  if (!payload || payload.length < 1) return Math.round(sampleRate * 0.020);
+  const toc    = payload[0];
+  const config = (toc >> 3) & 0x1F;
+  const code   = toc & 0x03;
+
+  // Frame duration in ms per config index
+  const frameDurMs = [
+    10,20,40,60, 10,20,40,60, 10,20,40,60, 10,20,40,60, // 0-15
+    2.5,5,10,20, 2.5,5,10,20, 2.5,5,10,20, 2.5,5,10,20  // 16-31
+  ][config];
+
+  let frameCount;
+  if (code === 0) {
+    frameCount = 1;
+  } else if (code === 1 || code === 2) {
+    frameCount = 2;
+  } else {
+    // code === 3: multi-frame, frame count in next byte bits 0-5
+    frameCount = payload.length > 1 ? (payload[1] & 0x3F) : 1;
+    if (frameCount === 0) frameCount = 1;
+  }
+
+  return Math.round(sampleRate * frameDurMs / 1000) * frameCount;
+}
 
 /** Duration of one Opus frame in ticks. */
 function defaultFrameTicks(sr) {

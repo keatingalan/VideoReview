@@ -35,7 +35,8 @@ func ParseCSVMessage(server, data string) (ProScoreMessage, error) {
 		}
 		switch fields[1] {
 		case "0":
-			msg.Status = "scoring"
+			//Can't remember why this was like this. msg.Status = "scoring"
+			msg.Status = "competing"
 		case "1":
 			msg.Status = "competing"
 		default:
@@ -196,7 +197,11 @@ func ParseXMLMessage(server, data string, enrichScore func(*ProScoreMessage)) (P
 		switch rootName {
 		case "NowUp":
 			attrs := xmlAttrs(child)
-			msg.Status = "competing"
+			if attrs["Num"] == "" {
+				msg.Status = "stopped" //Gives empty nowup if cancel a score
+			} else {
+				msg.Status = "competing"
+			}
 			msg.Apparatus = attrs["Event"]
 			msg.Competitor = attrs["Num"]
 			msg.Name = strings.TrimSpace(attrs["FName"] + " " + attrs["LName"])

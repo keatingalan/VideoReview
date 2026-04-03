@@ -51,9 +51,10 @@ type EventMsg struct {
 
 // VideoFile describes a single uploaded video chunk as returned by /videolist.
 type VideoFile struct {
-	CameraDesc string `json:"camera_desc"`
-	Length     int64  `json:"length"`
-	EndTime    int64  `json:"end_time"`
-	StartTime  int64  `json:"start_time"`
+	CameraDesc string `json:"camera_desc,omitempty"`
+	Length     int64  `json:"length,omitempty"`
+	EndTime    int64  `json:"end_time,omitempty"`
+	StartTime  int64  `json:"start_time,omitempty"`
 	Filename   string `json:"filename"`
+	RoutineID  *int64 `json:"routine_id,omitempty"`
 }
