@@ -470,31 +470,31 @@
             groups.add({ id:"E|Bars", content:"Bars", subgroupStack:true })
             groups.add({ id:"E|Beam", content:"Beam", subgroupStack:true })
             groups.add({ id:"E|Floor", content:"Floor", subgroupStack:true })
-            //Show routines
-            await Promise.all(data?.map(async (m) => {
-                try{
-                    groups.add({
-                        id:"E|"+m.apparatus, //Should we split by server?
-                        content:m.apparatus,
-                        className:'event-group',
-                        subgroupStack:true
+            if(data) {//Show routines
+                await Promise.all(data.map(async (m) => {
+                    try{
+                        groups.add({
+                            id:"E|"+m.apparatus, //Should we split by server?
+                            content:m.apparatus,
+                            className:'event-group',
+                            subgroupStack:true
+                        })
+                    } catch(e) {/*ignore - probably just duplicate category*/}
+                    items.add({
+                        id:m.id,
+                        group:"E|"+m.apparatus,
+                        start:m.time_start,
+                        end:(m.time_stop?m.time_stop:undefined),
+                        type: (m.time_stop-m.time_start>0?'':'box'),
+                        //className: m.status,
+                        content: 
+                            //(m.status=='competing'?"&#x25B6;":(m.status='stopped'?"&#x25A0;":""))+
+                            '<small>'+m.competitor+" ("+m.club+") <br />"+m.name+'</small>',
+                        title: 
+                            '<small>'+m.competitor+"<br />"+m.club+"<br />"+m.name+'</small>'
                     })
-                } catch(e) {/*ignore - probably just duplicate category*/}
-                items.add({
-                    id:m.id,
-                    group:"E|"+m.apparatus,
-                    start:m.time_start,
-                    end:(m.time_stop?m.time_stop:undefined),
-                    type: (m.time_stop-m.time_start>0?'':'box'),
-                    //className: m.status,
-                    content: 
-                        //(m.status=='competing'?"&#x25B6;":(m.status='stopped'?"&#x25A0;":""))+
-                        '<small>'+m.competitor+" ("+m.club+") <br />"+m.name+'</small>',
-                    title: 
-                        '<small>'+m.competitor+"<br />"+m.club+"<br />"+m.name+'</small>'
-                })
-            }))
-            
+                }))
+            }
             //start fetching videos
             fetch('/videolist')
             .then(data=>data.json())
