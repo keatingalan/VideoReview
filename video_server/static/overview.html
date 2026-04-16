@@ -471,7 +471,7 @@
             groups.add({ id:"E|Beam", content:"Beam", subgroupStack:true })
             groups.add({ id:"E|Floor", content:"Floor", subgroupStack:true })
             //Show routines
-            await Promise.all(data.map(async (m) => {
+            await Promise.all(data?.map(async (m) => {
                 try{
                     groups.add({
                         id:"E|"+m.apparatus, //Should we split by server?
