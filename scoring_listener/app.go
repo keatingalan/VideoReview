@@ -91,7 +91,7 @@ func startApp() {
 }
 
 func guiGetHTTPEndpoint() string {
-	if guiYesNoTimeout("Video Server Setup", "Search for a Video Server via mDNS?\n\nYes = Search mDNS\nNo = Enter URL manually", 10*time.Second, true) {
+	if guiYesNoTimeout("Video Server Setup", "Search for a Video Server via mDNS?\n\nYes = Search mDNS\nNo = Enter URL manually", 5*time.Second, true) {
 		appendLog("Searching mDNS (5s)…")
 		if ep := searchMDNS(); ep != "" {
 			return ep

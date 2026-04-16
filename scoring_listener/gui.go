@@ -10,8 +10,6 @@ import (
 
 	"github.com/lxn/walk"
 	. "github.com/lxn/walk/declarative"
-	"github.com/lxn/win"
-	"golang.org/x/sys/windows"
 )
 
 // ── Display refresh ───────────────────────────────────────────────────────────
@@ -139,16 +137,6 @@ func doMDNS() {
 
 // ── Walk dialog helpers ───────────────────────────────────────────────────────
 
-// timerProc is a Windows timer callback. It receives hwnd of the window the
-// timer was set on, and we use it to post WM_CLOSE to close the dialog.
-// The callback signature is required by SetTimer: it runs on the UI thread
-// inside the message loop, so it is safe to call Win32 UI functions directly.
-var timerProc = windows.NewCallback(func(hwnd win.HWND, msg uint32, idEvent uintptr, dwTime uint32) uintptr {
-	win.KillTimer(hwnd, idEvent)
-	win.PostMessage(hwnd, win.WM_CLOSE, 0, 0)
-	return 0
-})
-
 // guiInputBox shows an input dialog with no timeout.
 func guiInputBox(title, prompt, defaultVal string) string {
 	return guiInputBoxTimeout(title, prompt, defaultVal, 0)
@@ -168,81 +156,91 @@ func guiInputBoxTimeout(title, prompt, defaultVal string, timeout time.Duration)
 		minHeight = 165
 	}
 
-	Dialog{
-		AssignTo:      &dlg,
-		Title:         title,
-		DefaultButton: new(*walk.PushButton),
-		CancelButton:  new(*walk.PushButton),
-		MinSize:       Size{Width: 420, Height: minHeight},
-		Layout:        VBox{Margins: Margins{Left: 10, Top: 10, Right: 10, Bottom: 10}, Spacing: 6},
-		Children: []Widget{
-			Label{Text: prompt},
-			LineEdit{AssignTo: &edit, Text: defaultVal},
-			Label{AssignTo: &timerLabel, Text: ""},
-			Composite{
-				Layout: HBox{},
-				Children: []Widget{
-					HSpacer{},
-					PushButton{
-						Text: "OK",
-						OnClicked: func() {
-							accepted = true
-							resultVal = edit.Text()
-							dlg.Accept()
+	mainWindow.Synchronize(func() {
+		Dialog{
+			AssignTo:      &dlg,
+			Title:         title,
+			DefaultButton: new(*walk.PushButton),
+			CancelButton:  new(*walk.PushButton),
+			MinSize:       Size{Width: 420, Height: minHeight},
+			Layout:        VBox{Margins: Margins{Left: 10, Top: 10, Right: 10, Bottom: 10}, Spacing: 6},
+			Children: []Widget{
+				Label{Text: prompt},
+				LineEdit{AssignTo: &edit, Text: defaultVal},
+				Label{AssignTo: &timerLabel, Text: ""},
+				Composite{
+					Layout: HBox{},
+					Children: []Widget{
+						HSpacer{},
+						PushButton{
+							Text: "OK",
+							OnClicked: func() {
+								accepted = true
+								resultVal = edit.Text()
+								dlg.Accept()
+							},
 						},
-					},
-					PushButton{
-						Text: "Cancel",
-						OnClicked: func() {
-							accepted = true
-							resultVal = ""
-							dlg.Cancel()
+						PushButton{
+							Text: "Cancel",
+							OnClicked: func() {
+								accepted = true
+								resultVal = ""
+								dlg.Cancel()
+							},
 						},
 					},
 				},
 			},
-		},
-	}.Create(mainWindow)
+		}.Create(mainWindow)
 
-	if timeout > 0 {
-		hwnd := dlg.Handle()
-		const timerID = 1
+		if timeout > 0 {
+			deadline := time.Now().Add(timeout)
+			done := make(chan struct{})
 
-		// SetTimer fires timerProc every second on the UI thread — no goroutine needed.
-		win.SetTimer(hwnd, timerID, 1000, timerProc)
-
-		deadline := time.Now().Add(timeout)
-		dlg.Closing().Attach(func(cancelled *bool, reason walk.CloseReason) {
-			win.KillTimer(hwnd, timerID)
-			if !accepted {
-				// Closed by timer (WM_CLOSE) or X button — use default.
-				resultVal = defaultVal
-			}
-		})
-
-		// Update the countdown label each second using a separate ticker.
-		// We do this via a goroutine + Synchronize just for the label text —
-		// the actual close is handled by timerProc on the UI thread.
-		go func() {
-			ticker := time.NewTicker(500 * time.Millisecond)
-			defer ticker.Stop()
-			for range ticker.C {
-				remaining := time.Until(deadline)
-				if remaining <= 0 {
+			dlg.Closing().Attach(func(cancelled *bool, reason walk.CloseReason) {
+				select {
+				case <-done:
 					return
+				default:
+					close(done)
 				}
-				secs := int(remaining.Seconds()) + 1
-				dlg.Synchronize(func() {
-					if timerLabel != nil {
-						timerLabel.SetText(fmt.Sprintf(
-							"Auto-selecting \"%s\" in %ds…", defaultVal, secs))
-					}
-				})
-			}
-		}()
-	}
+				if !accepted {
+					resultVal = defaultVal
+				}
+			})
 
-	dlg.Run()
+			go func() {
+				ticker := time.NewTicker(500 * time.Millisecond)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-done:
+						return
+					case <-ticker.C:
+						remaining := time.Until(deadline)
+						if remaining <= 0 {
+							dlg.Synchronize(func() {
+								if !accepted {
+									dlg.Cancel()
+								}
+							})
+							return
+						}
+						secs := int(remaining.Seconds()) + 1
+						dlg.Synchronize(func() {
+							if timerLabel != nil {
+								timerLabel.SetText(fmt.Sprintf(
+									"Auto-selecting \"%s\" in %ds…", defaultVal, secs))
+							}
+						})
+					}
+				}
+			}()
+		}
+
+		dlg.Run()
+	})
+
 	return resultVal
 }
 
@@ -275,75 +273,90 @@ func guiYesNoTimeout(title, message string, timeout time.Duration, defaultVal bo
 		minHeight = 145
 	}
 
-	Dialog{
-		AssignTo:      &dlg,
-		Title:         title,
-		DefaultButton: new(*walk.PushButton),
-		CancelButton:  new(*walk.PushButton),
-		MinSize:       Size{Width: 420, Height: minHeight},
-		Layout:        VBox{Margins: Margins{Left: 10, Top: 10, Right: 10, Bottom: 10}, Spacing: 6},
-		Children: []Widget{
-			Label{Text: message},
-			Label{AssignTo: &timerLabel, Text: ""},
-			Composite{
-				Layout: HBox{},
-				Children: []Widget{
-					HSpacer{},
-					PushButton{
-						Text: "Yes",
-						OnClicked: func() {
-							answered = true
-							resultVal = true
-							dlg.Accept()
+	mainWindow.Synchronize(func() {
+		Dialog{
+			AssignTo:      &dlg,
+			Title:         title,
+			DefaultButton: new(*walk.PushButton),
+			CancelButton:  new(*walk.PushButton),
+			MinSize:       Size{Width: 420, Height: minHeight},
+			Layout:        VBox{Margins: Margins{Left: 10, Top: 10, Right: 10, Bottom: 10}, Spacing: 6},
+			Children: []Widget{
+				Label{Text: message},
+				Label{AssignTo: &timerLabel, Text: ""},
+				Composite{
+					Layout: HBox{},
+					Children: []Widget{
+						HSpacer{},
+						PushButton{
+							Text: "Yes",
+							OnClicked: func() {
+								answered = true
+								resultVal = true
+								dlg.Accept()
+							},
 						},
-					},
-					PushButton{
-						Text: "No",
-						OnClicked: func() {
-							answered = true
-							resultVal = false
-							dlg.Accept()
+						PushButton{
+							Text: "No",
+							OnClicked: func() {
+								answered = true
+								resultVal = false
+								dlg.Accept()
+							},
 						},
 					},
 				},
 			},
-		},
-	}.Create(mainWindow)
+		}.Create(mainWindow)
 
-	if timeout > 0 {
-		hwnd := dlg.Handle()
-		const timerID = 2
+		if timeout > 0 {
+			deadline := time.Now().Add(timeout)
+			done := make(chan struct{})
 
-		win.SetTimer(hwnd, timerID, 1000, timerProc)
-
-		deadline := time.Now().Add(timeout)
-		dlg.Closing().Attach(func(cancelled *bool, reason walk.CloseReason) {
-			win.KillTimer(hwnd, timerID)
-			if !answered {
-				resultVal = defaultVal
-			}
-		})
-
-		go func() {
-			ticker := time.NewTicker(500 * time.Millisecond)
-			defer ticker.Stop()
-			for range ticker.C {
-				remaining := time.Until(deadline)
-				if remaining <= 0 {
+			dlg.Closing().Attach(func(cancelled *bool, reason walk.CloseReason) {
+				select {
+				case <-done:
 					return
+				default:
+					close(done)
 				}
-				secs := int(remaining.Seconds()) + 1
-				dlg.Synchronize(func() {
-					if timerLabel != nil {
-						timerLabel.SetText(fmt.Sprintf(
-							"Auto-selecting \"%s\" in %ds…", defaultText, secs))
-					}
-				})
-			}
-		}()
-	}
+				if !answered {
+					resultVal = defaultVal
+				}
+			})
 
-	dlg.Run()
+			go func() {
+				ticker := time.NewTicker(500 * time.Millisecond)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-done:
+						return
+					case <-ticker.C:
+						remaining := time.Until(deadline)
+						if remaining <= 0 {
+							dlg.Synchronize(func() {
+								if !answered {
+									dlg.Cancel()
+								}
+							})
+							return
+						}
+						secs := int(remaining.Seconds()) + 1
+						dlg.Synchronize(func() {
+							if timerLabel != nil {
+								timerLabel.SetText(fmt.Sprintf(
+									"Auto-selecting \"%s\" in %ds…", defaultText, secs))
+							}
+						})
+					}
+				}
+			}()
+		}
+
+		dlg.Run()
+	})
+
 	return resultVal
 }
 

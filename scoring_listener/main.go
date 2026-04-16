@@ -9,6 +9,7 @@ import (
 	"github.com/lxn/walk"
 	. "github.com/lxn/walk/declarative"
 	"github.com/lxn/win"
+	"golang.org/x/sys/windows"
 )
 
 // ── GUI widget handles ────────────────────────────────────────────────────────
@@ -25,6 +26,12 @@ var (
 	urlEdit      *walk.LineEdit
 	logEdit      *walk.TextEdit
 )
+
+var startupTimerProc = windows.NewCallback(func(hwnd win.HWND, msg uint32, idEvent uintptr, dwTime uint32) uintptr {
+	win.KillTimer(hwnd, idEvent)
+	go startApp()
+	return 0
+})
 
 func main() {
 	err := MainWindow{
@@ -73,14 +80,14 @@ func main() {
 						Text:    "Change Video Server",
 						MaxSize: Size{Width: 130},
 						OnClicked: func() {
-							go doChangeEndpoint()
+							doChangeEndpoint()
 						},
 					},
 					PushButton{
 						Text:    "Search mDNS",
 						MaxSize: Size{Width: 110},
 						OnClicked: func() {
-							go doMDNS()
+							doMDNS()
 						},
 					},
 				},
@@ -121,7 +128,8 @@ func main() {
 		win.SendMessage(mainWindow.Handle(), win.WM_SETICON, 0, uintptr(hIconSmall))
 	}
 
-	go startApp()
+	const startupTimerID = 1
+	win.SetTimer(mainWindow.Handle(), startupTimerID, 10, startupTimerProc)
 
 	// Refresh stats display every 500ms on the UI goroutine.
 	go func() {
