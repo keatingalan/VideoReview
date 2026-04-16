@@ -11,3 +11,8 @@ copy scoring-listener.exe video_server\static\scoring-listener.exe
 rsrc -manifest video_server\rsrc.manifest -ico video_server\app.ico -o video_server\rsrc.syso
 
 go build .\video_server\
+
+:: Build for linux also
+@set GOOS=linux
+@set GOARCH=amd64
+go build .\video_server\
