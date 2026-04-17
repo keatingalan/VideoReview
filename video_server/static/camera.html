@@ -233,7 +233,8 @@ function gotStream(stream) {
 	}
 	exportRecorder = new MediaRecorder(stream,options)
 	exportRecorder2 = new MediaRecorder(stream,options)
-	triggeredRecorder = new MediaRecorder(stream,options)
+	triggeredRecorders[0].recorder = new MediaRecorder(stream,options)
+	triggeredRecorders[1].recorder = new MediaRecorder(stream,options)
 	document.getElementById('heading').innerHTML="Ready"
 	//exportRecorder.addEventListener('start',(e)=>{exportRecorder2.stop();console.log("stopped1,started2")}) //Stop the other recorder when this one starts
 	//exportRecorder2.addEventListener('start',(e)=>{exportRecorder.stop();console.log("stopped2,started1")}) //Stop the other recorder when this one starts
@@ -248,14 +249,20 @@ function hasGetUserMedia() {
 		navigator.mediaDevices.getUserMedia);
 }
 
-var exportRecorder,exportRecorder2,triggeredRecorder
+var exportRecorder,exportRecorder2
+// State for each triggered recorder slot: tracks the source server IP and safety timeout
+var triggeredRecorders = [
+    { recorder: null, serverIP: null, safetyTimeout: null },
+    { recorder: null, serverIP: null, safetyTimeout: null }
+];
+const TRIGGERED_MAX_DURATION = 10 * 60 * 1000; // 10 minutes
 
 setInterval(updateScreen,500);
 function updateScreen() {
 	time=new Date()
 	document.getElementById("clock").innerHTML=time.toTimeString().substr(0,8)
 	try  {
-		if(exportRecorder.state=='recording'||exportRecorder2.state=='recording'||triggeredRecorder.state=='recording') {
+		if(exportRecorder.state=='recording'||exportRecorder2.state=='recording'||triggeredRecorder.state=='recording'||triggeredRecorder2.state=='recording') {
 			try {document.getElementById('body').classList.add('recording')} catch(e) {}
 			document.getElementById('heading').innerHTML="Recording"		
 		} else {
@@ -319,10 +326,36 @@ function swapRecorders() {
         exportRecorder.start();
     }
 }
+
+
+function startTriggeredRecorder(slot, msg) {
+    clearTimeout(triggeredRecorders[slot].safetyTimeout);
+    triggeredRecorders[slot].serverIP = msg.server;
+    var filename = "RoutineID_"+msg.id+"_"+Array.from({length:6}, () => 'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random()*36)]).join('');
+    try { triggeredRecorders[slot].recorder.stop(); } catch(e) {}
+    triggeredRecorders[slot].recorder.addEventListener('dataavailable', (e) => {
+        downloadExportRecording(e.data, null, filename);
+    }, {once: true});
+    triggeredRecorders[slot].recorder.start();
+    triggeredRecorders[slot].safetyTimeout = setTimeout(() => {
+        console.warn("Safety timeout: stopping triggered recorder slot "+slot+" after 10 minutes");
+        stopTriggeredRecorder(slot);
+    }, TRIGGERED_MAX_DURATION);
+    console.info("Started triggered recording (slot "+slot+") for "+msg.name+" on "+msg.apparatus+" from "+msg.server, msg);
+}
+
+function stopTriggeredRecorder(slot) {
+    clearTimeout(triggeredRecorders[slot].safetyTimeout);
+    triggeredRecorders[slot].safetyTimeout = null;
+    triggeredRecorders[slot].serverIP = null;
+    try { triggeredRecorders[slot].recorder.stop(); } catch(e) {}
+}
+
 var triggeredRecorderEnabled=false
 function startStopTriggeredRecorder() {
 	if(triggeredRecorderEnabled) {
-		try{triggeredRecorder.stop()} catch(e) {}
+		stopTriggeredRecorder(0);
+		stopTriggeredRecorder(1);
 		triggeredRecorderEnabled=false
 		document.getElementById('startStopTriggered').innerHTML="&#9679; Start Triggered Recording"
 		document.getElementById('setupFields').hidden=false
@@ -585,13 +618,22 @@ document.getElementById('zipfile').onchange=(e)=>{
                             && (document.getElementById('ScoreGenServer').value=="" || msg.server==document.getElementById('ScoreGenServer').value)
 							&& (!document.getElementById('dontrecord').value || !msg.name || !msg.name.includes(document.getElementById('dontrecord').value)) 
                         ) {
-                    try{triggeredRecorder.stop();} catch(e) {} //Stop if already recording for some reason
-                    triggeredRecorder.addEventListener('dataavailable', (e)=>{
-                        downloadExportRecording(e.data,null,"RoutineID_"+msg.id+"_"+Array.from({length:6}, () => 'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random()*36)]).join(''))},{once:true})
-                    triggeredRecorder.start()
-					console.info("Started triggered recording for "+msg.name+" on "+msg.apparatus,msg)
+                    // Use first available slot (one not currently recording)
+                    if (triggeredRecorders[0].recorder.state !== 'recording' && triggeredRecorders[0].serverIP === null) {
+                        startTriggeredRecorder(0, msg);
+                    } else if (triggeredRecorders[1].recorder.state !== 'recording' && triggeredRecorders[1].serverIP === null) {
+                        startTriggeredRecorder(1, msg);
+                    } else {
+                        console.warn("Both triggered recorders are busy, cannot start recording for "+msg.name, msg);
+                    }
                 } else if (msg.status!="competing" && msg.apparatus==document.getElementById('apparatus').value) {
-                    triggeredRecorder.stop()
+                    // Stop whichever recorder was started by this server IP
+                    for (var i = 0; i < triggeredRecorders.length; i++) {
+                        if (triggeredRecorders[i].serverIP === msg.server) {
+                            console.info("Stopping triggered recorder slot "+i+" on stop message from "+msg.server, msg);
+                            stopTriggeredRecorder(i);
+                        }
+                    }
                 }
             }
             if(continuousRecordingEnabled) {
