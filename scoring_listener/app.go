@@ -6,6 +6,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"strings"
 	"time"
 
@@ -99,8 +100,8 @@ func guiGetHTTPEndpoint() string {
 		appendLog("No mDNS service found — please enter URL manually.")
 	}
 	for {
-		url := guiInputBox("", "Enter Video Server URL:", "http://")
-		if url == "" {
+		input := strings.TrimSpace(guiInputBox("", "Enter Video Server URL or IP address:", "http://"))
+		if input == "" || input == "http://" || input == "https://" {
 			if guiYesNo("No Video Server", "No URL entered. Try mDNS search instead?") {
 				if ep := searchMDNS(); ep != "" {
 					return ep
@@ -108,11 +109,15 @@ func guiGetHTTPEndpoint() string {
 			}
 			continue
 		}
-		if !strings.HasPrefix(url, "http://") {
-			guiAlert("Invalid URL", "URL must start with http://")
+		if !strings.HasPrefix(input, "http://") && !strings.HasPrefix(input, "https://") {
+			input = "http://" + input
+		}
+		parsed, err := url.Parse(input)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+			guiAlert("Invalid URL", "Enter a valid HTTP URL or IP address and port like 192.168.1.5:3001 or http://192.168.1.5:3001")
 			continue
 		}
-		return url
+		return parsed.String()
 	}
 }
 

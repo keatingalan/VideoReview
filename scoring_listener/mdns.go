@@ -13,6 +13,8 @@ import (
 	"github.com/grandcat/zeroconf"
 )
 
+const mdnsVideoServerInstance = "WAG-Video-Review"
+
 // searchMDNS browses for _http._tcp services for 5 seconds and returns an
 // http://host:port URL. If exactly one service is found it is selected
 // automatically; if multiple are found the user is prompted to choose.
@@ -34,6 +36,9 @@ func searchMDNS() string {
 	go func() {
 		defer wg.Done()
 		for e := range entries {
+			if e.Instance != mdnsVideoServerInstance {
+				continue
+			}
 			found = append(found, e)
 			if len(e.AddrIPv4) > 0 {
 				appendLog(fmt.Sprintf("  mDNS: %s — %s:%d", e.Instance, e.AddrIPv4[0], e.Port))
