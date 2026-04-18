@@ -1,6 +1,8 @@
 //go:build windows
 // +build windows
 
+//go:generate goversioninfo -64 -icon=app.ico -manifest=rsrc.manifest -o=rsrc.syso versioninfo.json
+
 package main
 
 import (

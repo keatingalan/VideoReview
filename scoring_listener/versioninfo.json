@@ -1,0 +1,40 @@
+{
+  "FixedFileInfo": {
+    "FileVersion": {
+      "Major": 1,
+      "Minor": 0,
+      "Patch": 0,
+      "Build": 0
+    },
+    "ProductVersion": {
+      "Major": 1,
+      "Minor": 0,
+      "Patch": 0,
+      "Build": 0
+    },
+    "FileFlagsMask": "3f",
+    "FileFlags": "00",
+    "FileOS": "40004",
+    "FileType": "1",
+    "FileSubType": "0"
+  },
+  "StringFileInfo": {
+    "Comments": "Captures scoring messages via UDP from ScoreGen for use in video review system",
+    "CompanyName": "Alan Keating",
+    "FileDescription": "Scoring Listener",
+    "FileVersion": "1.0.0.0",
+    "InternalName": "scoring-listener",
+    "LegalCopyright": "",
+    "OriginalFilename": "scoring-listener.exe",
+    "PrivateBuild": "",
+    "ProductName": "WAG Video Review",
+    "ProductVersion": "1.0.0.0",
+    "SpecialBuild": ""
+  },
+  "VarFileInfo": {
+    "Translation": {
+      "LangID": "0C09",
+      "CharsetID": "04b0"
+    }
+  }
+}
