@@ -541,7 +541,7 @@
             })            
         })
     }
-    filterVideos=(){>{
+    filterVideos=()=>{
         filterText=document.getElementById('videofilter').value
         videos=document.getElementById('videolist').children
         for(var i=0;i<videos.length;i++) {
@@ -1109,6 +1109,8 @@
                     title: '<small>' + msg.competitor + '<br />' + msg.club + '<br />' + msg.name + '</small>'
                 });
             } catch(e) {            }
+        })
+        
         ws.addEventListener('close', () => {
             console.log('WebSocket closed – reconnecting in 3 s');
             setTimeout(connectWebSocket, 3000);
