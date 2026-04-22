@@ -23,7 +23,7 @@ func ParseCSVMessage(server, data string) (ProScoreMessage, error) {
 	msg := ProScoreMessage{
 		Time:        time.Now().UnixMilli(),
 		Server:      server,
-		FullMessage: fields,
+		FullMessage: data,
 	}
 
 	cmd := fields[0]
@@ -186,12 +186,12 @@ func ParseXMLMessage(server, data string, enrichScore func(*ProScoreMessage)) (P
 			}
 			child["_attr"] = attrs
 		}
-		root := map[string]any{rootName: child}
+		//root := map[string]any{rootName: child}
 
 		msg := ProScoreMessage{
 			Time:        time.Now().UnixMilli(),
 			Server:      server,
-			FullMessage: root,
+			FullMessage: data,
 		}
 
 		switch rootName {

@@ -113,8 +113,7 @@ func saveEvent(msg ProScoreMessage) {
 		}
 
 	case "stopped", "scoring":
-		if msg.Competitor == "" {
-
+		if msg.Competitor == "" || msg.Competitor == "-1" {
 			hub.broadcast(EventMsg{
 				Server:    msg.Server,
 				Apparatus: msg.Apparatus,
@@ -124,16 +123,16 @@ func saveEvent(msg ProScoreMessage) {
 		} // Don't save if we don't have a competitor ID to match on; this is likely a non-score update that arrived before the "NowUp" with competitor info.
 
 		err := db.QueryRow(`SELECT id FROM routines
-			WHERE (competitor = ? OR ? = '') AND apparatus = ? AND server = ?
+			WHERE (competitor = ? OR ? = '' or ? = '-1') AND apparatus = ? AND server = ?
 			  AND (
 			    (time_stop IS NULL AND time_score IS NULL)
 			    OR time_stop >= ?
 			  )
 			  AND time_start >= ?
 			ORDER BY time_start DESC LIMIT 1`,
-			msg.Competitor, msg.Competitor, msg.Apparatus, msg.Server,
+			msg.Competitor, msg.Competitor, msg.Competitor, msg.Apparatus, msg.Server,
 			msg.Time-int64(1000), windowStart,
-		).Scan(&existingID)
+		).Scan(&existingID) //Will return if we don't have a competitor now the latest opened routine
 
 		if err == nil {
 			setClauses := []string{"time_stop = COALESCE(time_stop, ?)"}

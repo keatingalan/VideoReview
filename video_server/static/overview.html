@@ -159,6 +159,24 @@
         }
         .vis-item {
             font-size: 80%;
+            margin-top: 1px;
+            margin-bottom: 1px;
+        }
+        /* Event items: single row, no wrap, left-aligned */
+        .vis-item.event-item .vis-item-content {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.4;
+            padding-top: 1px;
+            padding-bottom: 1px;
+        }
+        /* Left-align box items (no duration) instead of centering */
+        .vis-item.vis-box {
+            text-align: left;
+        }
+        .vis-item.vis-box .vis-item-content {
+            transform: none !important;
         }
         #timeline { font-size: 80%; }
         img {height: 12em;}
@@ -468,8 +486,10 @@
             items.clear()
             groups.clear()
             if(data) {//Show routines — build all groups+items in one pass, then batch-add
+                const APPARATUS_ORDER = ['Vault','Bars','Beam','Floor'];
                 const newGroups = new Map();
                 const newItems = [];
+                // itemContent: #competitor · club · name (play buttons inserted after load)
                 data.forEach((m) => {
                     const server = m.server || 'unknown';
                     const groupId = 'E|' + server + '|' + m.apparatus;
@@ -477,22 +497,39 @@
                         newGroups.set(groupId, {
                             id: groupId,
                             content: m.apparatus + ' <span style="font-size:80%;opacity:0.6">' + server + '</span>',
-                            className: 'event-group',
-                            subgroupStack: true
+                            className: 'event-group'
                         });
                     }
+                    const hasDuration = (m.time_stop - m.time_start > 0);
                     newItems.push({
                         id: m.id,
                         group: groupId,
                         start: m.time_start,
                         end: (m.time_stop ? m.time_stop : undefined),
-                        type: (m.time_stop - m.time_start > 0 ? 'range' : 'box'),
-                        content: '<small>' + m.competitor + ' (' + m.club + ') <br />' + m.name + '</small>',
+                        type: (hasDuration ? 'range' : 'point'),
+                        className: 'event-item',
+                        // content: #num [play buttons injected later] club · name
+                        content: m.competitor + ' · ' + m.club + ' · ' + m.name,
                         title: '<small>' + m.competitor + '<br />' + m.club + '<br />' + m.name + '</small>'
                     });
                 });
-                groups.add(Array.from(newGroups.values())); // single batch
-                items.add(newItems);                        // single batch
+                // Sort groups: known apparatus in fixed order per server, unknowns appended
+                const sortedGroups = Array.from(newGroups.values()).sort((a, b) => {
+                    // Extract apparatus name (part after last '|')
+                    const appA = a.id.split('|').pop();
+                    const appB = b.id.split('|').pop();
+                    const srvA = a.id.split('|')[1];
+                    const srvB = b.id.split('|')[1];
+                    // Primary sort: server, Secondary: apparatus order
+                    if (srvA !== srvB) return srvA < srvB ? -1 : 1;
+                    const iA = APPARATUS_ORDER.indexOf(appA);
+                    const iB = APPARATUS_ORDER.indexOf(appB);
+                    const oA = iA === -1 ? 999 : iA;
+                    const oB = iB === -1 ? 999 : iB;
+                    return oA - oB;
+                });
+                groups.add(sortedGroups);  // single batch, ordered
+                items.add(newItems);        // single batch
             }
             //start fetching videos
             fetch('/videolist')
@@ -523,10 +560,13 @@
                         } else if (v.routine_id!=null) {
                             const existing = items.get(v.routine_id);
                             if (existing) {
-                                routineUpdates.push({
-                                    id: v.routine_id,
-                                    content: '<span class="play-btn" data-video="' + v.filename + '" style="font-weight:bold;cursor:pointer;border: 1px solid grey">&#x23F5;</span> ' + existing.content
-                                });
+                                // Insert play button after the competitor number (first token before ' · ')
+                                const playBtn = '<span class="play-btn" data-video="' + v.filename + '" style="cursor:pointer;border:1px solid rgba(255,255,255,0.5);border-radius:3px;padding:0 2px">&#x23F5;</span> ';
+                                const dotIdx = existing.content.indexOf(' · ');
+                                const newContent = dotIdx >= 0
+                                    ? existing.content.slice(0, dotIdx) + ' ' + playBtn + existing.content.slice(dotIdx + 3)
+                                    : playBtn + existing.content;
+                                routineUpdates.push({ id: v.routine_id, content: newContent });
                             }
                         }
                     });
@@ -656,7 +696,7 @@
             multiselect:true,
             sequentialSelection:true,
             multiselectPerGroup:true,
-            stack:false,
+            stack:true,//false,
             start:new Date().setHours(7,30,0,0),
             end:new Date().setHours(20,30,0,0),
             xss:{disabled:true}
@@ -1104,8 +1144,9 @@
                     group: wsGroupId,
                     start: msg.time_start,
                     end: (msg.time_stop ? msg.time_stop : undefined),
-                    type: (msg.time_stop - msg.time_start > 0 ? 'range' : 'box'),
-                    content: '<small>' + msg.competitor + ' (' + msg.club + ') <br />' + msg.name + '</small>',
+                    type: (msg.time_stop - msg.time_start > 0 ? 'range' : 'point'),
+                    className: 'event-item',
+                    content: msg.competitor + ' · ' + msg.club + ' · ' + msg.name,
                     title: '<small>' + msg.competitor + '<br />' + msg.club + '<br />' + msg.name + '</small>'
                 });
             } catch(e) {            }
