@@ -1,3 +1,6 @@
 cert.crt
 EventData
 key.pem
+events.db
+events.db-wal
+events.db-shm

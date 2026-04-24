@@ -68,6 +68,7 @@ func startApp() {
 	stats.mu.Unlock()
 
 	go monitorFailures()
+	go processRetryQueue()
 
 	// Refresh local IPs periodically in case of DHCP changes.
 	go func() {

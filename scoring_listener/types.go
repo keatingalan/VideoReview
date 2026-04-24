@@ -34,7 +34,21 @@ type Stats struct {
 	lastSendOK       time.Time // zero until first successful send
 }
 
+// RetryItem holds a message to be retried with metadata about retry attempts.
+type RetryItem struct {
+	Message     ProScoreMessage
+	RetryCount  int
+	LastAttempt time.Time
+}
+
+// RetryQueue manages messages that failed to send, retrying them with exponential backoff.
+type RetryQueue struct {
+	mu    sync.Mutex
+	items []RetryItem
+}
+
 var stats = Stats{startTime: time.Now(), state: stateStarting}
+var retryQueue = RetryQueue{}
 
 var (
 	httpEndpoint      string
