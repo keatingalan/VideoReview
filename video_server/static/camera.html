@@ -78,10 +78,43 @@
 		[hidden]{
 			display:none !important;
 		}
+		/* Upload alert overlay */
+		#uploadAlertBanner {
+			display: none;
+			position: fixed;
+			top: 50%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+			z-index: 10000;
+			background: red;
+			color: white;
+			font-size: 2em;
+			font-weight: bold;
+			text-align: center;
+			padding: 0.6em 1.2em;
+			border-radius: 1em;
+			box-shadow: 0 0 40px rgba(0,0,0,0.7);
+			pointer-events: all;
+			animation: alertPulse 1s infinite alternate;
+		}
+		#uploadAlertBanner button {
+			display: block;
+			margin: 0.5em auto 0;
+			font-size: 0.6em;
+			padding: 0.4em 1em;
+			background: white;
+			color: red;
+			border: none;
+			border-radius: 0.5em;
+			cursor: pointer;
+			font-weight: bold;
+		}
+		@keyframes alertPulse {
+			0%   { box-shadow: 0 0 40px rgba(0,0,0,0.7), 0 0 0 6px red; }
+			100% { box-shadow: 0 0 40px rgba(0,0,0,0.7), 0 0 0 18px rgba(255,0,0,0.2); }
+		}
 	</style>
 	<script src="EBML.js"></script>
-	<!--<script src="ebml.min.js"></script>/-->
-	<!--<script src="webm-fix.js"></script>/-->
 	<script src="jszip.js"></script>
 </head>
 
@@ -122,6 +155,13 @@
 		
 		<video id='videoPlayer' autoplay='true' playsinline muted="true"></video>
 	</div>
+	<!-- Upload failure alert overlay -->
+	<div id="uploadAlertBanner">
+		⚠️ UPLOAD PROBLEM<br>
+		<span id="uploadAlertReason" style="font-size:0.6em;font-weight:normal;"></span>
+		<button onclick="dismissUploadAlert()">Dismiss alert</button>
+	</div>
+
 	<div id='progress'>
 		<progress id="uploadProgress" max="100" value="0"></progress>
 		<label for="uploadProgress" id="uploadProgressLabel">Upload remaining</label>
@@ -563,6 +603,106 @@ async function downloadRemainingChunksAsZip() {
 		updateUploadStatus() // Remove link to download
 	})
 }
+// ── Upload Alert System ───────────────────────────────────────────────────────
+// Triggers when: queue >= 250 MB AND upload has been stuck/failing for > 5 min.
+// "Stuck" means uploadStartTime was set but no progress is being made, OR
+// chunkUploadStatus maxed out (upload failed after retries).
+
+const ALERT_QUEUE_THRESHOLD_BYTES = 250 * 1024 * 1024; // 250 MB
+const ALERT_STALL_THRESHOLD_MS    = 5 * 60 * 1000;     // 5 minutes
+
+let uploadAlertActive       = false;
+let uploadAlertDismissed    = false;
+let alertAudioCtx           = null;
+let lastSuccessfulUploadTime = null; // updated each time a chunk succeeds
+
+// Track the size uploaded so we can detect stalls (no reduction for >5 min)
+let lastQueueSizeAtCheck    = null;
+let lastQueueSizeChangeTime = null;
+
+function shouldAlert() {
+    const queueBytes = chunksToUpload.reduce((n, {size}) => n + size, 0)
+    if (queueBytes < ALERT_QUEUE_THRESHOLD_BYTES) return false; // queue not big enough
+
+    const now = Date.now();
+
+    // Check if queue size has been stuck (not shrinking) for > 5 min
+    if (lastQueueSizeAtCheck === null || queueBytes < lastQueueSizeAtCheck) {
+        // Queue is shrinking — reset stall timer
+        lastQueueSizeAtCheck    = queueBytes;
+        lastQueueSizeChangeTime = now;
+        return false;
+    }
+    // Queue same size or growing — check how long it has been stuck
+    if (lastQueueSizeChangeTime === null) lastQueueSizeChangeTime = now;
+    return (now - lastQueueSizeChangeTime) >= ALERT_STALL_THRESHOLD_MS;
+}
+
+function playAlertBeep() {
+    try {
+        if (!alertAudioCtx) alertAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const ctx = alertAudioCtx;
+        // Two-tone urgent beep
+        [0, 0.5].forEach(offset => {
+            const osc  = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.type      = 'sine';
+            osc.frequency.setValueAtTime(880, ctx.currentTime + offset);
+            gain.gain.setValueAtTime(0.5, ctx.currentTime + offset);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + 0.2);
+            osc.start(ctx.currentTime + offset);
+            osc.stop(ctx.currentTime + offset + 0.25);
+        });
+    } catch(e) { console.warn('Alert audio failed', e); }
+}
+
+function showUploadAlert(reason) {
+    if (uploadAlertActive) return;
+    uploadAlertActive = true;
+    document.getElementById('uploadAlertBanner').style.display = 'block';
+    document.getElementById('uploadAlertReason').innerText     = reason;
+    // Audio + vibration fire on the 15s interval only (not here)
+}
+
+function hideUploadAlert() {
+    if (!uploadAlertActive) return;
+    uploadAlertActive = false;
+    document.getElementById('uploadAlertBanner').style.display = 'none';
+}
+
+function dismissUploadAlert() {
+    uploadAlertDismissed = true; // suppress until next fresh trigger
+    hideUploadAlert();
+}
+
+// Called every 15 seconds to check alert conditions
+setInterval(() => {
+    if (shouldAlert()) {
+        if (!uploadAlertDismissed) {
+            const qMB = Math.round(chunksToUpload.reduce((n, {size}) => n + size, 0) / 1024 / 1024);
+            const stuckMins = Math.round((Date.now() - lastQueueSizeChangeTime) / 60000);
+            showUploadAlert(`${qMB} MB queued, stuck for ${stuckMins} min`);
+        }
+        // Audio + vibration every 15s while alert is active (even if already shown)
+        if (uploadAlertActive) {
+            playAlertBeep();
+            if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 300]);
+        }
+    } else {
+        // Conditions cleared — auto-hide and allow future alerts
+        if (uploadAlertActive) hideUploadAlert();
+        uploadAlertDismissed = false;
+        // Reset stall detection when queue is below threshold
+        if (getQueueBytes() < ALERT_QUEUE_THRESHOLD_BYTES) {
+            lastQueueSizeAtCheck    = null;
+            lastQueueSizeChangeTime = null;
+        }
+    }
+}, 15000);
+
+
 document.getElementById('zipfile').onchange=(e)=>{
 	//Function to add zip file contents to the upload queue
 	if(!confirm("Uploading the same zip file multiple times can lead to corruption - are you sure you wish to continue?")) {return;}
