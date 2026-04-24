@@ -211,11 +211,12 @@
         }
         .btn-pair {
             display: flex;
+            flex-wrap: wrap;
             gap: 0.5em;
         }
         .btn-pair button {
-            flex: 1 1 0;
-            min-width: 0;
+            flex: 1 1 auto;
+            min-width: max-content;
         }
         #loading-overlay {
             position: absolute;
