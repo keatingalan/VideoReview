@@ -729,10 +729,16 @@
             start:new Date().setHours(7,30,0,0),
             end:new Date().setHours(20,30,0,0),
             xss:{disabled:true},
-            cluster:{maxItems:4},
+            cluster:{
+                maxItems:4,
+                clusterCriteria: (first, second) => {
+                    return !(first.className=='video-file'||second.className=='video-file') // only cluster non-video items together
+                },
             template: (itemData, element, data) => {
                 if (data.isCluster) {
                     return `<div>${data.items.length} routines</div>`;
+                } else if (data.className === 'video-file') {
+                    return ''
                 } else {
                     return `<div>${data.content}</div>`;
                 }
