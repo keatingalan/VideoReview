@@ -733,7 +733,8 @@
                 maxItems:4,
                 clusterCriteria: (first, second) => {
                     return !(first.className=='video-file'||second.className=='video-file') // only cluster non-video items together
-                },
+                }
+            },
             template: (itemData, element, data) => {
                 if (data.isCluster) {
                     return `<div>${data.items.length} routines</div>`;
