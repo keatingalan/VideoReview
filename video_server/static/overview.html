@@ -725,12 +725,12 @@
             multiselect:true,
             sequentialSelection:true,
             multiselectPerGroup:true,
-            stack:false,
+            stack:false, //Not sure how to get some groups to stack and others not to
             start:new Date().setHours(7,30,0,0),
             end:new Date().setHours(20,30,0,0),
             xss:{disabled:true},
             cluster:{
-                maxItems:4,
+                maxItems:2,
                 clusterCriteria: (first, second) => {
                     return !(first.className=='video-file'||second.className=='video-file') // only cluster non-video items together
                 }

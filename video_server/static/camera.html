@@ -334,6 +334,7 @@ function startStopRecorder() {
 		window.clearInterval(timer)
 		exportRecorder.stop()
 		exportRecorder2.stop()
+		continuousRecordingEnabled=false
 		document.getElementById('startStop').innerHTML="&#9679; Start Continuous Recording"
 		document.getElementById('heading').innerHTML="Ready"
 		try {document.getElementById('body').classList.remove('recording')} catch(e) {}
@@ -695,7 +696,7 @@ setInterval(() => {
         if (uploadAlertActive) hideUploadAlert();
         uploadAlertDismissed = false;
         // Reset stall detection when queue is below threshold
-        if (getQueueBytes() < ALERT_QUEUE_THRESHOLD_BYTES) {
+        if (chunksToUpload.reduce((n, {size}) => n + size, 0) < ALERT_QUEUE_THRESHOLD_BYTES) {
             lastQueueSizeAtCheck    = null;
             lastQueueSizeChangeTime = null;
         }
