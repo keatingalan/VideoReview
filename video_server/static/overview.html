@@ -519,7 +519,8 @@
                         newGroups.set(groupId, {
                             id: groupId,
                             content: m.apparatus + ' <span style="font-size:80%;opacity:0.6">' + server + '</span>',
-                            className: 'event-group'
+                            className: 'event-group',
+                            subgroupStack: true
                         });
                     }
                     const hasDuration = (m.time_stop - m.time_start > 0);
@@ -724,7 +725,7 @@
             multiselect:true,
             sequentialSelection:true,
             multiselectPerGroup:true,
-            stack:true,//false,
+            stack:false,
             start:new Date().setHours(7,30,0,0),
             end:new Date().setHours(20,30,0,0),
             xss:{disabled:true},
@@ -1171,7 +1172,8 @@
                 groups.add({
                     id: wsGroupId,
                     content: msg.apparatus + ' <span style="font-size:80%;opacity:0.6">' + wsServer + '</span>',
-                    className: 'event-group'
+                    className: 'event-group',
+                    subgroupStack: true
                 });
             } catch(e) { /* duplicate – ignore */ }
             try {
