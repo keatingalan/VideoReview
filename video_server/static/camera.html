@@ -113,6 +113,41 @@
 			0%   { box-shadow: 0 0 40px rgba(0,0,0,0.7), 0 0 0 6px red; }
 			100% { box-shadow: 0 0 40px rgba(0,0,0,0.7), 0 0 0 18px rgba(255,0,0,0.2); }
 		}
+		/* Battery low alert overlay */
+		#batteryAlertBanner {
+			display: none;
+			position: fixed;
+			top: 50%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+			z-index: 10001;
+			background: #c47a00;
+			color: white;
+			font-size: 2em;
+			font-weight: bold;
+			text-align: center;
+			padding: 0.6em 1.2em;
+			border-radius: 1em;
+			box-shadow: 0 0 40px rgba(0,0,0,0.7);
+			pointer-events: all;
+			animation: batteryPulse 1s infinite alternate;
+		}
+		#batteryAlertBanner button {
+			display: block;
+			margin: 0.5em auto 0;
+			font-size: 0.6em;
+			padding: 0.4em 1em;
+			background: white;
+			color: #c47a00;
+			border: none;
+			border-radius: 0.5em;
+			cursor: pointer;
+			font-weight: bold;
+		}
+		@keyframes batteryPulse {
+			0%   { box-shadow: 0 0 40px rgba(0,0,0,0.7), 0 0 0 6px #c47a00; }
+			100% { box-shadow: 0 0 40px rgba(0,0,0,0.7), 0 0 0 18px rgba(196,122,0,0.2); }
+		}
 	</style>
 	<script src="EBML.js"></script>
 	<script src="jszip.js"></script>
@@ -160,6 +195,13 @@
 		⚠️ UPLOAD PROBLEM<br>
 		<span id="uploadAlertReason" style="font-size:0.6em;font-weight:normal;"></span>
 		<button onclick="dismissUploadAlert()">Dismiss alert</button>
+	</div>
+
+	<!-- Battery low alert overlay -->
+	<div id="batteryAlertBanner">
+		🔋 BATTERY LOW: <span id="batteryAlertLevel">?</span>%<br>
+		<span style="font-size:0.6em;font-weight:normal;">Please connect a charger</span>
+		<button onclick="dismissBatteryAlert()">Dismiss</button>
 	</div>
 
 	<div id='progress'>
@@ -704,7 +746,88 @@ setInterval(() => {
 }, 15000);
 
 
-document.getElementById('zipfile').onchange=(e)=>{
+    // ── Battery Low Alert System ───────────────────────────────────────────────
+    // Shows a popup and plays an audible alarm every 60s when battery ≤ 5%
+    // and device is not charging.
+
+    const BATTERY_LOW_THRESHOLD = 5; // percent
+
+    let batteryAlertDismissed = false;
+    let batteryAlertActive    = false;
+    let batteryAlarmTimer     = null;
+    let batteryAudioCtx       = null;
+
+    function playBatteryAlarm() {
+        try {
+            if (!batteryAudioCtx) batteryAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const ctx = batteryAudioCtx;
+            // Three descending urgent tones
+            [0, 0.35, 0.7].forEach((offset, i) => {
+                const osc  = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(660 - i * 110, ctx.currentTime + offset);
+                gain.gain.setValueAtTime(0.4, ctx.currentTime + offset);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + 0.3);
+                osc.start(ctx.currentTime + offset);
+                osc.stop(ctx.currentTime + offset + 0.35);
+            });
+        } catch(e) { console.warn('Battery alarm audio failed', e); }
+        if (navigator.vibrate) navigator.vibrate([400, 100, 400, 100, 400]);
+    }
+
+    function showBatteryAlert(level) {
+        document.getElementById('batteryAlertLevel').innerText = Math.round(level * 100);
+        document.getElementById('batteryAlertBanner').style.display = 'block';
+        batteryAlertActive = true;
+    }
+
+    function hideBatteryAlert() {
+        document.getElementById('batteryAlertBanner').style.display = 'none';
+        batteryAlertActive = false;
+    }
+
+    function dismissBatteryAlert() {
+        batteryAlertDismissed = true;
+        hideBatteryAlert();
+    }
+
+    function startBatteryAlarm() {
+        if (batteryAlarmTimer) return; // already running
+        playBatteryAlarm(); // immediate first alarm
+        batteryAlarmTimer = setInterval(playBatteryAlarm, 60000); // then every 60s
+    }
+
+    function stopBatteryAlarm() {
+        clearInterval(batteryAlarmTimer);
+        batteryAlarmTimer = null;
+    }
+
+    function handleBatteryUpdate(battery) {
+        const isLow = battery.level <= (BATTERY_LOW_THRESHOLD / 100) && !battery.charging;
+        if (isLow) {
+            if (!batteryAlertDismissed) showBatteryAlert(battery.level);
+            startBatteryAlarm();
+        } else {
+            hideBatteryAlert();
+            stopBatteryAlarm();
+            batteryAlertDismissed = false; // reset dismiss when battery recovers
+        }
+    }
+
+    if (navigator.getBattery) {
+        navigator.getBattery().then(battery => {
+            handleBatteryUpdate(battery);
+            battery.addEventListener('levelchange',   () => handleBatteryUpdate(battery));
+            battery.addEventListener('chargingchange', () => handleBatteryUpdate(battery));
+        }).catch(e => console.warn('Battery API unavailable', e));
+    } else {
+        console.warn('Battery Status API not supported on this device/browser');
+    }
+
+=(e)=>{
 	//Function to add zip file contents to the upload queue
 	if(!confirm("Uploading the same zip file multiple times can lead to corruption - are you sure you wish to continue?")) {return;}
 	var files = e.target.files;
