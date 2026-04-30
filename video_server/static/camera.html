@@ -827,7 +827,7 @@ setInterval(() => {
         console.warn('Battery Status API not supported on this device/browser');
     }
 
-=(e)=>{
+document.getElementById('zipfile').onchange=(e)=>{
 	//Function to add zip file contents to the upload queue
 	if(!confirm("Uploading the same zip file multiple times can lead to corruption - are you sure you wish to continue?")) {return;}
 	var files = e.target.files;
