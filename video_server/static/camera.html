@@ -226,6 +226,27 @@ var videoSelect = document.querySelector('select#cameralist');
 audioSelect.onchange = onAudioChange;
 videoSelect.onchange = getStream;
 
+var apparatusSelect = document.getElementById('apparatus');
+apparatusSelect.onchange = function(e) {
+  var descField = document.getElementById('description');
+  var server = document.getElementById('ScoreGenServer').value.trim();
+  var prevApparatus = e && e.detail && e.detail.prev ? e.detail.prev : null;
+  var current = descField.value.trim();
+  // Build what the auto-filled value would have been for the PREVIOUS apparatus selection
+  var prevApparatusValue = apparatusSelect._prevValue || '';
+  var autoValueWas = prevApparatusValue
+    ? (server ? prevApparatusValue + ' ' + server : prevApparatusValue)
+    : '';
+  var newApparatus = this.value;
+  var newAuto = server ? newApparatus + ' ' + server : newApparatus;
+  if (current === '' || current === autoValueWas) {
+    descField.value = newAuto;
+  }
+  apparatusSelect._prevValue = newApparatus;
+};
+// Initialise _prevValue to the current selection on page load
+apparatusSelect._prevValue = apparatusSelect.value;
+
 function onAudioChange() {
   // Preserve the user's selection before getStream/gotStream can overwrite it
   var selectedAudioValue = audioSelect.value;
@@ -258,6 +279,22 @@ function gotDevices(deviceInfos) {
       option.text = deviceInfo.label || `Camera ${videoSelect.length + 1}`;
       videoSelect.appendChild(option);
     }
+  }
+
+  // Default to rear/back-facing camera if one is labelled as such
+  const rearIndex = [...videoSelect.options].findIndex(o =>
+    /back|rear|environment/i.test(o.text)
+  );
+  if (rearIndex >= 0) {
+    videoSelect.selectedIndex = rearIndex;
+    getStream(); // re-open stream with the preferred camera
+  }
+
+  // Default to the first real audio input (skip the "No Audio" placeholder)
+  const firstAudioIndex = [...audioSelect.options].findIndex(o => o.value !== 'none');
+  if (firstAudioIndex >= 0 && audioSelect.value === 'none') {
+    audioSelect.selectedIndex = firstAudioIndex;
+    onAudioChange(); // restarts the stream preserving the chosen audio device
   }
 }
 
@@ -414,7 +451,9 @@ function swapRecorders() {
 function startTriggeredRecorder(slot, msg) {
     clearTimeout(triggeredRecorders[slot].safetyTimeout);
     triggeredRecorders[slot].serverIP = msg.server;
-    var filename = "RoutineID_"+msg.id+"_"+Array.from({length:6}, () => 'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random()*36)]).join('');
+    var _name = (msg.firstName||'') + (msg.surname ? '_'+msg.surname : '');
+    var filename = "RoutineID_"+msg.id+(_name?"_"+_name:"")+(msg.level?"_"+msg.level:"")+(msg.apparatus?"_"+msg.apparatus:"")+"_"+Array.from({length:6}, () => 'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random()*36)]).join('');
+    filename = filename.replace(/[^a-zA-Z0-9_\-]/g, '_'); // sanitise for filesystem
     try { triggeredRecorders[slot].recorder.stop(); } catch(e) {}
     triggeredRecorders[slot].recorder.addEventListener('dataavailable', (e) => {
         downloadExportRecording(e.data, null, filename);
