@@ -2,6 +2,7 @@
 package main
 
 import (
+	"compress/gzip"
 	"crypto/tls"
 	"embed"
 	"flag"
@@ -10,7 +11,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path"
 	"sort"
+	"strings"
 	"videoreview/shared"
 
 	"github.com/grandcat/zeroconf"
@@ -37,6 +40,79 @@ const (
 //go:embed static
 var staticFiles embed.FS
 
+type gzipResponseWriter struct {
+	http.ResponseWriter
+	writer *gzip.Writer
+}
+
+func (w *gzipResponseWriter) Write(b []byte) (int, error) {
+	return w.writer.Write(b)
+}
+
+func (w *gzipResponseWriter) WriteHeader(statusCode int) {
+	w.Header().Del("Content-Length")
+	w.ResponseWriter.WriteHeader(statusCode)
+}
+
+func gzipJSONHandler(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			h.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("Vary", "Accept-Encoding")
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Del("Content-Length")
+		gz := gzip.NewWriter(w)
+		defer gz.Close()
+		h.ServeHTTP(&gzipResponseWriter{ResponseWriter: w, writer: gz}, r)
+	})
+}
+
+func gzipFontHandler(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") || !isFontAsset(r.URL.Path) {
+			h.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("Vary", "Accept-Encoding")
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Del("Content-Length")
+		gz := gzip.NewWriter(w)
+		defer gz.Close()
+		h.ServeHTTP(&gzipResponseWriter{ResponseWriter: w, writer: gz}, r)
+	})
+}
+
+func cacheControlHandler(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isCacheableAsset(r.URL.Path) {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
+func isFontAsset(urlPath string) bool {
+	ext := strings.ToLower(path.Ext(urlPath))
+	switch ext {
+	case ".woff", ".woff2", ".ttf", ".otf", ".svg", ".eot":
+		return true
+	default:
+		return false
+	}
+}
+
+func isCacheableAsset(urlPath string) bool {
+	ext := strings.ToLower(path.Ext(urlPath))
+	switch ext {
+	case ".js", ".css", ".woff", ".woff2", ".ttf", ".otf", ".svg", ".eot":
+		return true
+	default:
+		return false
+	}
+}
+
 func main() {
 	listen := flag.Bool("listen", false, "Enable UDP listeners for keypad and iPad devices")
 	flag.Parse()
@@ -56,19 +132,19 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to create static sub-FS: %v", err)
 	}
-	staticHandler := http.FileServer(http.FS(staticFS))
+	staticHandler := gzipFontHandler(cacheControlHandler(http.FileServer(http.FS(staticFS))))
 
 	registerShared := func(mux *http.ServeMux) {
 		mux.HandleFunc("/ws", wsHandler)
 		mux.HandleFunc("/ip", handleIP)
 		mux.HandleFunc("/events", handleEvents)
-		mux.HandleFunc("/videolist", handleVideoList)
-		mux.HandleFunc("/video_list", handleVideoList)
-		mux.HandleFunc("/cameralist", handleCameraList)
+		mux.Handle("/videolist", gzipJSONHandler(http.HandlerFunc(handleVideoList)))
+		mux.Handle("/video_list", gzipJSONHandler(http.HandlerFunc(handleVideoList)))
+		mux.Handle("/cameralist", gzipJSONHandler(http.HandlerFunc(handleCameraList)))
 		mux.HandleFunc("/uploadChunked", handleUploadChunked)
 		mux.HandleFunc("/video/", handleVideoServe)
-		mux.HandleFunc("/eventlist", handleEventList)
-		mux.HandleFunc("/scorelist", handleScoreList)
+		mux.Handle("/eventlist", gzipJSONHandler(http.HandlerFunc(handleEventList)))
+		mux.Handle("/scorelist", gzipJSONHandler(http.HandlerFunc(handleScoreList)))
 		mux.HandleFunc("/cameraQR", func(w http.ResponseWriter, r *http.Request) {
 			handleQR(w, r, "/", "https")
 		})

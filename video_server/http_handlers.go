@@ -9,9 +9,69 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/skip2/go-qrcode"
 )
+
+// uploadTracker tracks in-progress chunked uploads
+type uploadTracker struct {
+	mu      sync.Mutex
+	uploads map[string]*uploadProgress
+}
+
+type uploadProgress struct {
+	receivedChunks int
+	totalChunks    int
+}
+
+var tracker = &uploadTracker{uploads: make(map[string]*uploadProgress)}
+
+// parseVideoFile attempts to parse a filename into a VideoFile struct.
+// Returns nil if the filename format is not recognized.
+func parseVideoFile(name string) *VideoFile {
+	if strings.Contains(name, "!") {
+		// Continuous recording format: desc!endtime!length[.ext]
+		parts := strings.SplitN(name, "!", 3)
+		if len(parts) < 3 {
+			log.Println("Couldn't parse video filename:", name)
+			return nil
+		}
+		endTime, _ := strconv.ParseInt(strings.Split(parts[1], ".")[0], 10, 64)
+		lengthStr := parts[2]
+		if idx := strings.Index(lengthStr, "."); idx >= 0 {
+			lengthStr = lengthStr[:idx]
+		}
+		length, _ := strconv.ParseInt(lengthStr, 10, 64)
+		return &VideoFile{
+			CameraDesc: parts[0],
+			Length:     length,
+			EndTime:    endTime,
+			StartTime:  endTime - length,
+			Filename:   name,
+		}
+	} else if strings.HasPrefix(name, "RoutineID_") {
+		// Triggered recording: RoutineID_<id>_<random>[.ext]
+		// e.g. RoutineID_42_a3f9bc.webm
+		base := strings.TrimSuffix(name, filepath.Ext(name))
+		parts := strings.SplitN(base, "_", 3) // ["RoutineID", "<id>", "<random>"]
+		if len(parts) < 2 {
+			log.Println("Couldn't parse RoutineID video filename:", name)
+			return nil
+		}
+		routineID, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil {
+			log.Println("Couldn't parse routine ID in filename:", name)
+			return nil
+		}
+		return &VideoFile{
+			RoutineID: &routineID,
+			Filename:  name,
+		}
+	}
+	log.Println("Unrecognised video filename format:", name)
+	return nil
+}
 
 func handleVideoList(w http.ResponseWriter, r *http.Request) {
 	entries, err := os.ReadDir(uploadDir)
@@ -26,49 +86,9 @@ func handleVideoList(w http.ResponseWriter, r *http.Request) {
 		if e.IsDir() {
 			continue
 		}
-		name := e.Name()
-
-		if strings.Contains(name, "!") {
-			// Continuous recording format: desc!endtime!length[.ext]
-			parts := strings.SplitN(name, "!", 3)
-			if len(parts) < 3 {
-				log.Println("Couldn't parse video filename:", name)
-				continue
-			}
-			endTime, _ := strconv.ParseInt(strings.Split(parts[1], ".")[0], 10, 64)
-			lengthStr := parts[2]
-			if idx := strings.Index(lengthStr, "."); idx >= 0 {
-				lengthStr = lengthStr[:idx]
-			}
-			length, _ := strconv.ParseInt(lengthStr, 10, 64)
-			files = append(files, VideoFile{
-				CameraDesc: parts[0],
-				Length:     length,
-				EndTime:    endTime,
-				StartTime:  endTime - length,
-				Filename:   name,
-			})
-		} else if strings.HasPrefix(name, "RoutineID_") {
-			// Triggered recording: RoutineID_<id>_<random>[.ext]
-			// e.g. RoutineID_42_a3f9bc.webm
-			base := strings.TrimSuffix(name, filepath.Ext(name))
-			parts := strings.SplitN(base, "_", 3) // ["RoutineID", "<id>", "<random>"]
-			if len(parts) < 2 {
-				log.Println("Couldn't parse RoutineID video filename:", name)
-				continue
-			}
-			routineID, err := strconv.ParseInt(parts[1], 10, 64)
-			if err != nil {
-				log.Println("Couldn't parse routine ID in filename:", name)
-				continue
-			}
-			files = append(files, VideoFile{
-				RoutineID: &routineID,
-				Filename:  name,
-			})
-		} else {
-			log.Println("Unrecognised video filename format:", name)
-			continue
+		vf := parseVideoFile(e.Name())
+		if vf != nil {
+			files = append(files, *vf)
 		}
 	}
 
@@ -116,12 +136,17 @@ func handleUploadChunked(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	filename := filepath.Base(r.URL.Query().Get("name"))
+	chunkNum := r.URL.Query().Get("currentChunkIndex") // current chunk number (0-indexed)
+	totalChunks := r.URL.Query().Get("totalChunks")    // total number of chunks
+
 	f, err := os.OpenFile(filepath.Join(uploadDir, filename), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
 	defer f.Close()
+
+	// Write the chunk data
 	buf := make([]byte, 32*1024)
 	for {
 		n, err := r.Body.Read(buf)
@@ -132,8 +157,40 @@ func handleUploadChunked(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
+
+	// Track chunk if total chunks provided
+	if chunkNum != "" && totalChunks != "" {
+		total, _ := strconv.Atoi(totalChunks)
+
+		tracker.mu.Lock()
+		progress, exists := tracker.uploads[filename]
+		if !exists {
+			progress = &uploadProgress{totalChunks: total}
+			tracker.uploads[filename] = progress
+		}
+		progress.receivedChunks++
+
+		// Check if upload is complete
+		if progress.receivedChunks >= total {
+			// Remove from tracking
+			delete(tracker.uploads, filename)
+			tracker.mu.Unlock()
+
+			// Parse and broadcast the file data
+			vf := parseVideoFile(filename)
+			if vf != nil {
+				hub.broadcast(map[string]any{
+					"status": "newVideo",
+					"file":   vf,
+				})
+			}
+		} else {
+			tracker.mu.Unlock()
+		}
+	}
+
 	w.WriteHeader(200)
-	w.Write([]byte("Upload complete!"))
+	w.Write([]byte("Chunk received"))
 }
 
 func handleVideoServe(w http.ResponseWriter, r *http.Request) {

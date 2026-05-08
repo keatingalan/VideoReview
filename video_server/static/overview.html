@@ -5,7 +5,8 @@
 	<meta charset="utf-8">
 	<meta http-equiv="X-UA-Compatible" content="IE=edge">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
-
+    <link rel="preload" href="/DMSans-VariableFont_opsz,wght.ttf" as="font" type="font/ttf" crossorigin>
+    <link rel="preload" href="/MediaInfoModule.wasm" as="fetch" type="application/wasm" crossorigin>
 	<title>Competition Videos</title>
 	<script src="/vis-timeline-graph2d.min.js"></script>
     <link href="/vis-timeline-graph2d.min.css" rel="stylesheet" type="text/css" />
@@ -71,6 +72,37 @@
             min-height: 150px;
             background: darkgrey;
             display: block;
+        }
+        #pane-video:fullscreen video,
+        #pane-video:-webkit-full-screen video {
+            width: 100%;
+            height: 100%;
+            min-height: 0;
+        }
+        #pane-video:fullscreen #video-controls-bar,
+        #pane-video:-webkit-full-screen #video-controls-bar,
+        #pane-video.is-fullscreen #video-controls-bar {
+            position: absolute;
+            left: 16px;
+            right: 16px;
+            top: 16px;
+            bottom: auto;
+            background: rgba(0,0,0,0.45);
+            border-radius: 6px;
+            padding: 8px;
+            transition: opacity 0.2s ease;
+            opacity: 1;
+            z-index: 20;
+        }
+        #pane-video.is-fullscreen .fullscreen-pref,
+        #pane-video:fullscreen .fullscreen-pref,
+        #pane-video:-webkit-full-screen .fullscreen-pref {
+            display: none !important;
+        }
+        #pane-video:not(:hover):fullscreen #video-controls-bar,
+        #pane-video:not(:hover):-webkit-full-screen #video-controls-bar,
+        #pane-video.is-fullscreen:not(:hover) #video-controls-bar {
+            opacity: 0;
         }
 
         /* Overlay toolbar — top-right of the video, fades in on hover */
@@ -142,6 +174,47 @@
         }
         #score-table tr:nth-child(even) td { background: #f0f0f0; }
         #score-table tr:hover td { background: #dce8ff; }
+
+        /* Apparatus colour coding */
+        #score-table tr.app-vault  td { background-color: #d4f7d4; }
+        #score-table tr.app-bars   td { background-color: #ffd4d4; }
+        #score-table tr.app-beam   td { background-color: #fff6cc; }
+        #score-table tr.app-floor  td { background-color: #d4e8ff; }
+        #score-table tr.app-vault:hover  td { background-color: #aaeaaa; }
+        #score-table tr.app-bars:hover   td { background-color: #ffaaaa; }
+        #score-table tr.app-beam:hover   td { background-color: #ffecaa; }
+        #score-table tr.app-floor:hover  td { background-color: #aaccff; }
+        #score-table tr.score-highlight td { outline: 3px solid #e60; box-shadow: inset 0 0 0 2px #e60; }
+
+        
+        h1#heading {display: none; }
+        /* Small screen: single column — scores/video first, buttons second, timeline last */
+        @media (max-width: 700px) {
+            body { display: flex; flex-direction: column; }
+            .flex-layout {
+                flex-direction: column;
+                order: 1;
+            }
+            #timeline-wrapper { order: 2; }
+            .tab-panel, .control-column {
+                flex: 1 1 100%;
+                min-width: 0;
+            }
+            .tab-panel    { order: 1; }
+            .control-column { order: 2; }
+
+            /* Clock moves inline with the heading — hide the standalone clock block */
+            div#clock { display: none; }
+            h1#heading {display: block; }
+            h1#heading::after {
+                content: attr(data-clock);
+                font-size: 0.5em;
+                font-weight: normal;
+                opacity: 0.7;
+                margin-left: 0.75em;
+                vertical-align: middle;
+            }
+        }
     
         .vis-item {
             font-size: 80%;
@@ -335,7 +408,7 @@
             </div>
             <div class="btn-pair">
                 <button onclick="setTimelineWindow()">Zoom to day</button>
-                <button onclick="zoomToNow()">Zoom to now</button>
+                <button id="zoom-now-btn" onclick="toggleZoomToNow()" style="background:#ccc;border:1px solid #999;">Zoom to now</button>
             </div>
             <label style="float:right">
                 Event to find: <input id="eventdesc" type="text" onkeydown="if (event.key === 'Enter') {findEvent();}" />
@@ -369,10 +442,11 @@
                             <th>ND</th>
                             <th>Final</th>
                             <th>Time</th>
+                            <th>Video</th>
                         </tr>
                     </thead>
                     <tbody id="score-table-body">
-                        <tr><td colspan="8" style="color:#888;font-style:italic">Loading scores...</td></tr>
+                        <tr><td colspan="9" style="color:#888;font-style:italic">Loading scores...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -384,10 +458,23 @@
                         <span id="record-btn-label">Rec</span>
                     </button>
                 </div>
+                <div id="video-controls-bar" style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:#333;flex-wrap:wrap;">
+                    <span style="color:#aaa;font-size:0.8em;">Speed:</span>
+                    <button onclick="setPlaybackSpeed(1)"   id="speed-1"    style="font-size:0.75em;padding:2px 6px;background:#2a7ae2;color:#fff;border:1px solid #777;border-radius:3px;cursor:pointer;">1×</button>
+                    <button onclick="setPlaybackSpeed(0.5)" id="speed-0.5"  style="font-size:0.75em;padding:2px 6px;background:#555;color:#fff;border:1px solid #777;border-radius:3px;cursor:pointer;">½×</button>
+                    <button onclick="setPlaybackSpeed(0.25)"id="speed-0.25" style="font-size:0.75em;padding:2px 6px;background:#555;color:#fff;border:1px solid #777;border-radius:3px;cursor:pointer;">¼×</button>
+                    <button onclick="setPlaybackSpeed(0.1)" id="speed-0.1"  style="font-size:0.75em;padding:2px 6px;background:#555;color:#fff;border:1px solid #777;border-radius:3px;cursor:pointer;">0.1×</button>
+                    <span style="color:#aaa;font-size:0.8em;">Step:</span>
+                    <button onclick="seekFrame(-1)" title="Step backward one frame" style="font-size:0.75em;padding:2px 6px;background:#444;color:#fff;border:1px solid #777;border-radius:3px;cursor:pointer;">◄</button>
+                    <button onclick="seekFrame(1)" title="Step forward one frame" style="font-size:0.75em;padding:2px 6px;background:#444;color:#fff;border:1px solid #777;border-radius:3px;cursor:pointer;">►</button>
+                    <button onclick="seekFrame(-10*30)" title="Step backward ten seconds" style="font-size:0.75em;padding:2px 6px;background:#444;color:#fff;border:1px solid #777;border-radius:3px;cursor:pointer;">⏮</button>
+                    <button onclick="seekFrame(10*30)" title="Step forward ten seconds" style="font-size:0.75em;padding:2px 6px;background:#444;color:#fff;border:1px solid #777;border-radius:3px;cursor:pointer;">⏭</button>
+                    <label class="fullscreen-pref" style="color:#fff;font-size:0.8em;display:flex;align-items:center;gap:4px;cursor:pointer;">
+                        <input type="checkbox" id="fullscreen-checkbox" checked onchange="onFullscreenPrefChange()" style="cursor:pointer;"> Full screen when load new video?
+                    </label>
+                </div>
             </div>
-            
         </div>
-        
     </div>
     <div id="timeline-wrapper" style="position:relative;">
         <div id="loading-overlay"><div class="spinner"></div></div>
@@ -400,12 +487,14 @@
 		<p id="modalCaption" style="background-color:white; margin-top:2em; padding:1em; text-align:center; max-width:90vw;border-radius:8px; box-shadow: 0 0 15px black;"></p>
 	</div>
 </body>
-<script type="text/javascript" src="/mediainfo.js"></script>
+<script src="/mediainfo.js" defer></script>
 
 <script>
     setInterval(updateScreen,200);
     function updateScreen() {
-        document.getElementById("clock").innerHTML=new Date().toTimeString().substr(0,8)
+        const timeStr = new Date().toTimeString().substr(0,8);
+        document.getElementById("clock").innerHTML = timeStr;
+        document.getElementById("heading").dataset.clock = timeStr;
         if (playbackStartTime != null) {
             const player = document.getElementById('player');
             if (!player.paused && !player.ended) {
@@ -432,6 +521,61 @@
     };
     xhr.open("GET", "/ip", true);
     xhr.send();
+
+
+    function buildRoutineUpdateForVideo(filename, routineId) {
+        const existing = items.get(routineId);
+        if (!existing || !existing.content) return null;
+        if (existing.content.includes('data-video="' + filename + '"')) return null;
+        const playBtn = '<span class="play-btn" data-video="' + filename + '" data-desc="" style="cursor:pointer;border:1px solid rgba(255,255,255,0.5);border-radius:3px;padding:0 2px">&#x23F5;</span> ';
+        const dotIdx = existing.content.indexOf(' · ');
+        return dotIdx >= 0
+            ? existing.content.slice(0, dotIdx) + ' ' + playBtn + existing.content.slice(dotIdx + 3)
+            : playBtn + existing.content;
+    }
+
+    function addVideoItemsToTimeline(videos) {
+        if (!Array.isArray(videos) || videos.length === 0) return;
+
+        const newVideoGroups = new Map();
+        const newVideoItems = [];
+        const routineUpdates = [];
+
+        videos.forEach(v => {
+            if (v.camera_desc != null) {
+                const groupId = 'V|' + v.camera_desc;
+                if (!newVideoGroups.has(groupId)) {
+                    newVideoGroups.set(groupId, {
+                        id: groupId,
+                        content: '\u{1F4F9} ' + v.camera_desc,
+                        className: 'video-group'
+                    });
+                }
+                newVideoItems.push({
+                    id: v.filename,
+                    group: groupId,
+                    start: new Date(v.start_time),
+                    end: new Date(v.start_time + v.length),
+                    className: 'video-file',
+                    title: v.filename
+                });
+            } else if (v.routine_id != null) {
+                const newContent = buildRoutineUpdateForVideo(v.filename, v.routine_id);
+                if (newContent) {
+                    routineUpdates.push({ id: v.routine_id, content: newContent });
+                }
+                //Add to scores table too
+                try {
+                    document.getElementById('video-' + v.routine_id).innerHTML = `<span class="play-btn" data-video="${v.filename}" data-desc="" style="cursor:pointer;border:1px solid rgba(255,255,255,0.5);border-radius:3px;padding:0 2px">&#x23F5;</span>`;
+                } catch(e) {}
+            }
+        });
+
+        if (newVideoGroups.size) groups.add(Array.from(newVideoGroups.values()));
+        if (newVideoItems.length) items.add(newVideoItems);
+        if (routineUpdates.length) items.update(routineUpdates);
+    }
+
     refreshVideos=()=>{
         document.getElementById('loading-overlay').style.display = 'flex'
         //Now put in the events:
@@ -492,45 +636,7 @@
             fetch('/videolist')
             .then(data=>data.json())
             .then(data=> { 
-                if (data!=null) {
-                    const newVideoGroups = new Map();
-                    const newVideoItems = [];
-                    const routineUpdates = [];
-                    data.forEach(v=>{
-                        if(v.camera_desc!=null) {
-                            const groupId = 'V|' + v.camera_desc;
-                            if (!newVideoGroups.has(groupId)) {
-                                newVideoGroups.set(groupId, {
-                                    id: groupId,
-                                    content: '\u{1F4F9} ' + v.camera_desc,
-                                    className: 'video-group'
-                                });
-                            }
-                            newVideoItems.push({
-                                id: v.filename,
-                                group: groupId,
-                                start: new Date(v.start_time),
-                                end: new Date(v.start_time + v.length),
-                                className: 'video-file',
-                                title: v.filename
-                            });
-                        } else if (v.routine_id!=null) {
-                            const existing = items.get(v.routine_id);
-                            if (existing) {
-                                // Insert play button after the competitor number (first token before ' · ')
-                                const playBtn = '<span class="play-btn" data-video="' + v.filename + '" style="cursor:pointer;border:1px solid rgba(255,255,255,0.5);border-radius:3px;padding:0 2px">&#x23F5;</span> ';
-                                const dotIdx = existing.content.indexOf(' · ');
-                                const newContent = dotIdx >= 0
-                                    ? existing.content.slice(0, dotIdx) + ' ' + playBtn + existing.content.slice(dotIdx + 3)
-                                    : playBtn + existing.content;
-                                routineUpdates.push({ id: v.routine_id, content: newContent });
-                            }
-                        }
-                    });
-                    groups.add(Array.from(newVideoGroups.values())); // single batch
-                    items.add(newVideoItems);                        // single batch
-                    if (routineUpdates.length) items.update(routineUpdates); // single batch
-                }
+                addVideoItemsToTimeline(data);
                 setTimeout(()=>{
                     document.getElementById('loading-overlay').style.display = 'none'
                     hideEmptyGroups()
@@ -554,9 +660,43 @@
         const d = document.getElementById('date').value;
         timeline.setWindow(new Date(d).setHours(7,30,0,0), new Date(d).setHours(20,30,0,0));
     }
-    zoomToNow=()=>{
+    var _zoomToNowActive = false;
+    var _zoomToNowInterval = null;
+    var _zoomToNowProgrammatic = false;
+
+    function disableZoomToNow() {
+        if (!_zoomToNowActive) return;
+        _zoomToNowActive = false;
+        const btn = document.getElementById('zoom-now-btn');
+        if (btn) {
+            btn.style.background = '#ccc';
+            btn.style.color = '';
+            btn.style.borderColor = '#999';
+        }
+        if (_zoomToNowInterval) {
+            clearInterval(_zoomToNowInterval);
+            _zoomToNowInterval = null;
+        }
+    }
+
+    function applyZoomToNow() {
         if (!timeline || typeof timeline.setWindow !== 'function') return;
-        timeline.setWindow(new Date(Date.now() - 25 * 60 * 1000), new Date(Date.now() + 5 * 60 * 1000));
+        _zoomToNowProgrammatic = true;
+        timeline.setWindow(new Date(Date.now() - 18 * 60 * 1000), new Date(Date.now() + 2 * 60 * 1000), {animation: false});
+        setTimeout(() => { _zoomToNowProgrammatic = false; }, 200);
+    }
+    function toggleZoomToNow() {
+        _zoomToNowActive = !_zoomToNowActive;
+        const btn = document.getElementById('zoom-now-btn');
+        if (_zoomToNowActive) {
+            btn.style.background = '#2a7ae2';
+            btn.style.color = '#fff';
+            btn.style.borderColor = '#1a5abf';
+            applyZoomToNow();
+            _zoomToNowInterval = setInterval(applyZoomToNow, 5000);
+        } else {
+            disableZoomToNow();
+        }
     }
     let searchState = {
         searchText: '',
@@ -572,7 +712,7 @@
             searchState.matchingItems = items.get().filter(item =>
                 item.content && item.content.toLowerCase().includes(lowerSearch)
             );
-            searchState.currentIndex = -1;
+            searchState.currentIndex = 0;
         }
 
         const matches = searchState.matchingItems;
@@ -582,16 +722,17 @@
         }
 
         // Move to next item
-        searchState.currentIndex = (searchState.currentIndex + 1) % matches.length;
+        searchState.currentIndex = (searchState.currentIndex - 1) % matches.length;
         const matchedItem = matches[searchState.currentIndex];
 
         // Highlight and zoom
         timeline.setSelection([matchedItem.id]);
-
-            zoomToItem(matchedItem.id); // defined earlier
+        disableZoomToNow()
+        zoomToItem(matchedItem.id); // defined earlier
         
     }
-    zoomToItem = (itemId, zoomMargin = 0.25, zoomSeconds=90 )=>{
+    zoomToItem = (itemId, zoomMargin = 0.25, zoomSeconds=120 )=>{
+        disableZoomToNow();
         const item = items.get(itemId);
         if (!item) return;
 
@@ -681,14 +822,29 @@
         });
     let _hideEmptyTimer;
     timeline.on('rangechanged', function () {
+        if (!_zoomToNowProgrammatic) {
+            disableZoomToNow();
+        }
         clearTimeout(_hideEmptyTimer);
         _hideEmptyTimer = setTimeout(hideEmptyGroups, 200);
     });
-    // Delegated handler for play buttons injected into timeline items
-    document.getElementById('timeline-vis').addEventListener('click', function(e) {
+    timeline.on('select', function(properties) {
+        clearScoreHighlights();
+        if (properties.items && properties.items.length > 0) {
+            const selectedId = properties.items[0];
+            const selectedItem = items.get(selectedId);
+            if (selectedItem && selectedItem.className === 'event-item') {
+                highlightScore(selectedId);
+            }
+        }
+    });
+    // Delegated handler for play buttons injected into timeline items and score table
+    document.addEventListener('click', function(e) {
         var btn = e.target.closest('.play-btn');
         if (btn) {
+            e.stopPropagation();
             document.getElementById('player').src = '/video/' + btn.dataset.video;
+            document.getElementById('videodesc').innerHTML=": "+btn.dataset.desc; 
             switchTab('video');
         }
     });
@@ -863,6 +1019,56 @@
         _clipRecorder = null;
     }
 
+    // ── Fullscreen preference ─────────────────────────────────────────────────
+    function onFullscreenPrefChange() { /* preference checked on play */ }
+
+    // ── Playback speed ────────────────────────────────────────────────────────
+    function setPlaybackSpeed(rate) {
+        const video = document.getElementById('player');
+        video.playbackRate = rate;
+        // highlight active button
+        [1, 0.5, 0.25, 0.1].forEach(r => {
+            const btn = document.getElementById('speed-' + r);
+            if (btn) btn.style.background = (r === rate) ? '#2a7ae2' : '#555';
+        });
+    }
+
+    function seekFrame(direction) {
+        const video = document.getElementById('player');
+        if (!video || isNaN(video.currentTime)) return;
+        video.pause();
+        const frameDuration = 1 / 30; // approximate single frame step
+        const nextTime = Math.max(0, Math.min(video.duration || Infinity, video.currentTime + direction * frameDuration));
+        video.currentTime = nextTime;
+    }
+
+    function updateFullscreenState() {
+        const pane = document.getElementById('pane-video');
+        const fsElement = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement;
+        if (pane) {
+            if (fsElement === pane) {
+                pane.classList.add('is-fullscreen');
+            } else {
+                pane.classList.remove('is-fullscreen');
+            }
+        }
+    }
+    document.addEventListener('fullscreenchange', updateFullscreenState);
+    document.addEventListener('webkitfullscreenchange', updateFullscreenState);
+    document.addEventListener('mozfullscreenchange', updateFullscreenState);
+    document.addEventListener('MSFullscreenChange', updateFullscreenState);
+    updateFullscreenState();
+    setPlaybackSpeed(1);
+    // Apply fullscreen when video starts playing
+    document.getElementById('player').addEventListener('play', function() {
+        this.loop = false; // never loop
+        if (document.getElementById('fullscreen-checkbox') && document.getElementById('fullscreen-checkbox').checked) {
+            const fullscreenTarget = document.getElementById('pane-video') || this;
+            if (fullscreenTarget.requestFullscreen) fullscreenTarget.requestFullscreen();
+            else if (fullscreenTarget.webkitRequestFullscreen) fullscreenTarget.webkitRequestFullscreen();
+        }
+    });
+
     async function startPlayback() { // returns Promise; caller switches to video tab
         recordedChunks = [];
         setDownloadBtn('hidden');
@@ -1004,9 +1210,8 @@
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         document.getElementById('pane-' + name).classList.add('active');
         document.querySelectorAll('.tab-btn').forEach(b => {
-            if (b.textContent.toLowerCase().includes(name === 'video' ? 'video' : 'event')) {
-                b.classList.add('active');
-            }
+            if (name === 'video' && b.textContent.toLowerCase().includes('video')) b.classList.add('active');
+            if (name === 'scores' && b.textContent.toLowerCase().includes('score')) b.classList.add('active');
         });
     }
 
@@ -1030,12 +1235,21 @@
         return `${time} ${dateStr}`;
     }
 
+    function apparatusClass(app) {
+        if (!app) return '';
+        const a = app.toLowerCase();
+        if (a.includes('vault'))  return 'app-vault';
+        if (a.includes('bars'))    return 'app-bars';
+        if (a.includes('beam'))   return 'app-beam';
+        if (a.includes('floor'))  return 'app-floor';
+        return '';
+    }
     // recentScores holds all rows as objects so we can re-render without a full fetch
     var recentScores = [];
     function renderScoresTable() {
         const tbody = document.getElementById('score-table-body');
         if (recentScores.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" style="color:#888;font-style:italic">No scores yet</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" style="color:#888;font-style:italic">No scores yet</td></tr>';
             return;
         }
         //Remove duplicates (same id) that can occur when the same score is received via WebSocket and fetched via API at the same time, keeping the most recent one
@@ -1048,19 +1262,48 @@
         });
 
         tbody.innerHTML = recentScores.map(m => {
-            const statusClass = 'status-' + (m.status || '');
-            const icon = m.status === 'competing' ? '&#x25B6; ' : m.status === 'stopped' ? '&#x25A0; ' : '';
-            return `<tr id='score-${m.id}' onclick="zoomToItem(${m.id})">
+            const finalStr = m.final_score != null && m.final_score !== '' ? Number(m.final_score).toFixed(3) : '';
+            const dStr     = m.d != null && m.d !== '' ? Number(m.d).toFixed(1) : '';
+            const eStr     = m.e != null && m.e !== '' ? Number(m.e).toFixed(3) : '';
+            const ndStr    = m.nd != null && m.nd !== '' ? Number(m.nd).toFixed(1) : '';
+            return `<tr id='score-${m.id}' class='${apparatusClass(m.apparatus)}' onclick="zoomToItem(${m.id})">
                 <td>${m.apparatus || ''}</td>
                 <td>${m.competitor ?? ''}</td>
                 <td>${m.name || ''}${m.club ? ' (' + m.club + ')' : ''}</td>
-                <td>${m.d != null && m.d!='' ? Number(m.d).toFixed(1) : ''}</td>
-                <td>${m.e != null  && m.e!='' ? Number(m.e).toFixed(3) : ''}</td>
-                <td>${m.nd != null  && m.nd!='' ? Number(m.nd).toFixed(1) : ''}</td>
-                <td>${m.final_score != null  && m.final_score!='' ? Number(m.final_score).toFixed(3) : ''}</td>
+                <td>${dStr}</td>
+                <td>${eStr}</td>
+                <td>${ndStr}</td>
+                <td>${finalStr}</td>
                 <td>${formatTime(m.time_score)}</td>
+                <td id='video-${m.id}'></td>
             </tr>`;
         }).join('');
+
+        // Also update timeline item tooltips for items that have scores
+        recentScores.forEach(m => {
+            const item = items.get(m.id);
+            if (!item) return;
+            const dStr     = m.d != null && m.d !== '' ? Number(m.d).toFixed(1) : '—';
+            const eStr     = m.e != null && m.e !== '' ? Number(m.e).toFixed(3) : '—';
+            const ndStr    = m.nd != null && m.nd !== '' ? Number(m.nd).toFixed(1) : '—';
+            const finalStr = m.final_score != null && m.final_score !== '' ? Number(m.final_score).toFixed(3) : '—';
+            const scoreTooltip = `<small>${m.competitor}<br />${m.club}<br />${m.name}<br /><b>${m.apparatus}</b><br />D:${dStr} E:${eStr} ND:${ndStr}<br />Final: <b>${finalStr}</b></small>`;
+            items.update({ id: m.id, title: scoreTooltip, content: item.content });
+        });
+    }
+    function clearScoreHighlights() {
+        document.querySelectorAll('#score-table tr.score-highlight').forEach(r => r.classList.remove('score-highlight'));
+    }
+
+    function highlightScore(id) {
+        clearScoreHighlights();
+        // Switch to scores tab
+        switchTab('scores');
+        const row = document.getElementById('score-' + id);
+        if (row) {
+            row.classList.add('score-highlight');
+            row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
     }
     // Populate table from the eventlist API (called by refreshVideos already)
     function refreshScoresTable() {
@@ -1073,6 +1316,9 @@
             .catch(() => {});
     }
     refreshScoresTable();
+    document.getElementById('score-table').addEventListener('click', function() {
+        clearScoreHighlights();
+    });
 
     // ── WebSocket – live event updates ────────────────────────────────────────
     //
@@ -1101,6 +1347,9 @@
         ws.addEventListener('message', (event) => {
             let msg;
             try { msg = JSON.parse(event.data); } catch(e) { return; }
+            if (msg.status=='newVideo' || msg.type === 'newVideo' || msg.file) {
+                addVideoItemsToTimeline([msg.file]);
+            }
             if (msg.time_score) {
                 // Append to live scores table
                 recentScores.unshift(msg);
@@ -1118,6 +1367,11 @@
                 });
             } catch(e) { /* duplicate – ignore */ }
             try {
+                const dStr     = msg.d != null && msg.d !== '' ? Number(msg.d).toFixed(1) : '—';
+                const eStr     = msg.e != null && msg.e !== '' ? Number(msg.e).toFixed(3) : '—';
+                const ndStr    = msg.nd != null && msg.nd !== '' ? Number(msg.nd).toFixed(1) : '—';
+                const finalStr = msg.final_score != null && msg.final_score !== '' ? Number(msg.final_score).toFixed(3) : null;
+                const scoreInfo = finalStr !== null ? `<br />D:${dStr} E:${eStr} ND:${ndStr}<br />Final: <b>${finalStr}</b>` : '';
                 items.update({
                     id: msg.id,
                     group: wsGroupId,
@@ -1126,7 +1380,7 @@
                     type: (msg.time_stop - msg.time_start > 0 ? 'range' : 'point'),
                     className: 'event-item',
                     content: msg.competitor + ' · ' + msg.club + ' · ' + msg.name,
-                    title: '<small>' + msg.competitor + '<br />' + msg.club + '<br />' + msg.name + '</small>'
+                    title: '<small>' + msg.competitor + '<br />' + msg.club + '<br />' + msg.name + scoreInfo + '</small>'
                 });
             } catch(e) {            }
         })
