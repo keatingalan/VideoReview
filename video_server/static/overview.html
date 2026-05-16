@@ -8,8 +8,7 @@
     <link rel="preload" href="/DMSans-VariableFont_opsz,wght.ttf" as="font" type="font/ttf" crossorigin>
     <link rel="preload" href="/MediaInfoModule.wasm" as="fetch" type="application/wasm" crossorigin>
 	<title>Competition Videos</title>
-	<script src="/vis-timeline-graph2d.min.js"></script>
-    <link href="/vis-timeline-graph2d.min.css" rel="stylesheet" type="text/css" />
+
     <style>
         @font-face {
 			font-family: "DM Sans";
@@ -286,109 +285,22 @@
                 transform: rotate(360deg);
             }
         }
-         /* ── Video file items — filmstrip style ── */
-        .vis-item.video-file {
-            background-color: #7a8a9a;
-            border: 1px solid #4a5a6a;
-            border-top-color: #8a9aaa;
-            border-bottom-color: #8a9aaa;
-            color: #fff;
-            border-radius: 2px;
-            font-size: 74%;
-            opacity: 0.95;
-            /* Sprocket holes: repeating squares top and bottom */
-            background-image:
-                /* top sprocket row */
-                repeating-linear-gradient(
-                    90deg,
-                    transparent 0px, transparent 3px,
-                    rgba(255,255,255,0.25) 3px, rgba(255,255,255,0.25) 4px,
-                    transparent 4px, transparent 7px,
-                    rgba(0,0,0,0.5) 7px, rgba(0,0,0,0.5) 13px,
-                    transparent 13px, transparent 16px,
-                    rgba(255,255,255,0.25) 16px, rgba(255,255,255,0.25) 17px,
-                    transparent 17px, transparent 20px
-                ),
-                /* bottom sprocket row */
-                repeating-linear-gradient(
-                    90deg,
-                    transparent 0px, transparent 3px,
-                    rgba(255,255,255,0.25) 3px, rgba(255,255,255,0.25) 4px,
-                    transparent 4px, transparent 7px,
-                    rgba(0,0,0,0.5) 7px, rgba(0,0,0,0.5) 13px,
-                    transparent 13px, transparent 16px,
-                    rgba(255,255,255,0.25) 16px, rgba(255,255,255,0.25) 17px,
-                    transparent 17px, transparent 20px
-                ),
-                /* main film body */
-                linear-gradient(
-                    to bottom,
-                    #8a9aaa 0%, #6a7a8a 20%, #6a7a8a 80%, #8a9aaa 100%
-                );
-            background-size:
-                20px 5px,
-                20px 5px,
-                100% 100%;
-            background-position:
-                0px 0px,
-                0px bottom,
-                0px 0px;
-            background-repeat:
-                repeat-x,
-                repeat-x,
-                no-repeat;
-        }
-        .vis-item.video-file .vis-item-content {
-            padding: 2px 6px;
-            margin-top: 1px;
-            /* keep text in the middle strip, clear of sprocket rows */
-            white-space: nowrap;
-            overflow: hidden;
-        }
-        .vis-item.video-file.vis-selected {
-            background-color: #ff9900;
-            border-color: #ffcc44;
-            border-top-color: #ffe088;
-            border-bottom-color: #ffe088;
-            color: #000;
-            opacity: 1;
-            box-shadow: 0 0 0 2px #ffcc44, 0 0 10px 2px rgba(255,180,0,0.6);
-            background-image:
-                repeating-linear-gradient(
-                    90deg,
-                    transparent 0px, transparent 3px,
-                    rgba(0,0,0,0.35) 3px, rgba(0,0,0,0.35) 4px,
-                    transparent 4px, transparent 7px,
-                    rgba(0,0,0,0.55) 7px, rgba(0,0,0,0.55) 13px,
-                    transparent 13px, transparent 16px,
-                    rgba(0,0,0,0.35) 16px, rgba(0,0,0,0.35) 17px,
-                    transparent 17px, transparent 20px
-                ),
-                repeating-linear-gradient(
-                    90deg,
-                    transparent 0px, transparent 3px,
-                    rgba(0,0,0,0.35) 3px, rgba(0,0,0,0.35) 4px,
-                    transparent 4px, transparent 7px,
-                    rgba(0,0,0,0.55) 7px, rgba(0,0,0,0.55) 13px,
-                    transparent 13px, transparent 16px,
-                    rgba(0,0,0,0.35) 16px, rgba(0,0,0,0.35) 17px,
-                    transparent 17px, transparent 20px
-                ),
-                linear-gradient(to bottom, #ffb700 0%, #ff9900 20%, #ff9900 80%, #ffb700 100%);
-            background-size: 20px 5px, 20px 5px, 100% 100%;
-            background-position: 0px 0px, 0px bottom, 0px 0px;
-            background-repeat: repeat-x, repeat-x, no-repeat;
-        }
-        /* group label styling for video vs event rows */
-        .vis-label.video-group .vis-inner {
-            color: #7090bb;
-            font-style: italic;
-            font-size: 90%;
-        }
-        .vis-label.event-group .vis-inner {
-            font-weight: bold;
-            color: #222;
-        }
+         /* ── Canvas timeline ── */
+        #ctl-root { background:#f4f4f4; border:1px solid #bbb; border-radius:4px; overflow:hidden; display:flex; flex-direction:column; min-height:300px; font-size:80%; user-select:none; }
+        #ctl-axis-row { display:flex; flex-shrink:0; background:#e8e8e8; border-bottom:2px solid #bbb; height:32px; position:relative; }
+        #ctl-axis-label-pad { flex-shrink:0; background:#ddd; border-right:1px solid #bbb; }
+        #ctl-axis-canvas-wrap { flex:1; position:relative; overflow:hidden; height:32px; }
+        #ctl-axis-canvas { position:absolute; top:0; left:0; height:32px; pointer-events:none; }
+        #ctl-body { display:flex; flex:1; overflow:hidden; position:relative; }
+        #ctl-labels { flex-shrink:0; overflow:hidden; background:#ececec; border-right:1px solid #bbb; display:flex; flex-direction:column; }
+        .ctl-label { display:flex; align-items:center; padding:0 6px; font-size:11px; color:#333; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; border-bottom:1px solid rgba(0,0,0,0.07); box-sizing:border-box; flex-shrink:0; }
+        .ctl-label.video-group { color:#5577aa; font-style:italic; }
+        .ctl-label.event-group { font-weight:600; color:#222; }
+        #ctl-rows-wrap { flex:1; overflow:hidden; position:relative; cursor:crosshair; }
+        #ctl-rows-canvas { position:absolute; top:0; left:0; display:block; }
+        #ctl-now-line { position:absolute; top:0; bottom:0; width:2px; background:rgba(220,40,40,0.75); pointer-events:none; display:none; }
+        #ctl-playhead  { position:absolute; top:0; bottom:0; width:2px; background:rgba(30,120,255,0.85); pointer-events:none; display:none; }
+        #ctl-tooltip { position:fixed; background:rgba(20,20,20,0.93); color:#fff; padding:6px 10px; border-radius:5px; font-size:11px; line-height:1.5; pointer-events:none; display:none; z-index:9999; max-width:280px; white-space:pre-wrap; box-shadow:0 2px 8px rgba(0,0,0,0.4); }
 	</style>
 </head>
 
@@ -411,7 +323,7 @@
                 <button id="zoom-now-btn" onclick="toggleZoomToNow()" style="background:#ccc;border:1px solid #999;">Zoom to now</button>
             </div>
             <label style="float:right">
-                Event to find: <input id="eventdesc" type="text" onkeydown="if (event.key === 'Enter') {findEvent();}" />
+                Gymnast to find: <input id="eventdesc" type="text" onkeydown="if (event.key === 'Enter') {findEvent();}" />
                 <button onclick="findEvent()"><svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px" fill="#1f1f1f"><path d="M765-144 526-383q-30 22-65.79 34.5-35.79 12.5-76.18 12.5Q284-336 214-406t-70-170q0-100 70-170t170-70q100 0 170 70t70 170.03q0 40.39-12.5 76.18Q599-464 577-434l239 239-51 51ZM384-408q70 0 119-49t49-119q0-70-49-119t-119-49q-70 0-119 49t-49 119q0 70 49 119t119 49Z"/></svg></button>
             </label>
             <button onclick='refreshVideos()'>
@@ -478,7 +390,25 @@
     </div>
     <div id="timeline-wrapper" style="position:relative;">
         <div id="loading-overlay"><div class="spinner"></div></div>
-        <div id="timeline-vis"></div>
+        <div id="ctl-root">
+            <div id="ctl-axis-row">
+                <div id="ctl-axis-label-pad"></div>
+                <div id="ctl-axis-canvas-wrap">
+                    <canvas id="ctl-axis-canvas"></canvas>
+                    <div id="ctl-now-line"></div>
+                    <div id="ctl-playhead"></div>
+                </div>
+            </div>
+            <div id="ctl-body">
+                <div id="ctl-labels"></div>
+                <div id="ctl-rows-wrap">
+                    <canvas id="ctl-rows-canvas"></canvas>
+                    <div id="ctl-now-line-rows"></div>
+                    <div id="ctl-playhead-rows"></div>
+                </div>
+            </div>
+            <div id="ctl-tooltip"></div>
+        </div>
     </div>
     
 	<!-- Image Modal -->
@@ -525,13 +455,10 @@
 
     function buildRoutineUpdateForVideo(filename, routineId) {
         const existing = items.get(routineId);
-        if (!existing || !existing.content) return null;
-        if (existing.content.includes('data-video="' + filename + '"')) return null;
-        const playBtn = '<span class="play-btn" data-video="' + filename + '" data-desc="" style="cursor:pointer;border:1px solid rgba(255,255,255,0.5);border-radius:3px;padding:0 2px">&#x23F5;</span> ';
-        const dotIdx = existing.content.indexOf(' · ');
-        return dotIdx >= 0
-            ? existing.content.slice(0, dotIdx) + ' ' + playBtn + existing.content.slice(dotIdx + 3)
-            : playBtn + existing.content;
+        if (!existing) return null;
+        // Store video filename directly on the item — canvas uses _videoFile, not HTML content
+        if (existing._videoFile === filename) return null;
+        return { id: routineId, _videoFile: filename };
     }
 
     function addVideoItemsToTimeline(videos) {
@@ -560,9 +487,9 @@
                     title: v.filename
                 });
             } else if (v.routine_id != null) {
-                const newContent = buildRoutineUpdateForVideo(v.filename, v.routine_id);
-                if (newContent) {
-                    routineUpdates.push({ id: v.routine_id, content: newContent });
+                const update = buildRoutineUpdateForVideo(v.filename, v.routine_id);
+                if (update) {
+                    routineUpdates.push(update);
                 }
                 //Add to scores table too
                 try {
@@ -659,6 +586,9 @@
         if (!timeline || typeof timeline.setWindow !== 'function') return;
         const d = document.getElementById('date').value;
         timeline.setWindow(new Date(d).setHours(7,30,0,0), new Date(d).setHours(20,30,0,0));
+        // Re-filter rows whenever the window is explicitly set
+        clearTimeout(_hideEmptyTimer);
+        _hideEmptyTimer = setTimeout(hideEmptyGroups, 100);
     }
     var _zoomToNowActive = false;
     var _zoomToNowInterval = null;
@@ -684,6 +614,8 @@
         _zoomToNowProgrammatic = true;
         timeline.setWindow(new Date(Date.now() - 18 * 60 * 1000), new Date(Date.now() + 2 * 60 * 1000), {animation: false});
         setTimeout(() => { _zoomToNowProgrammatic = false; }, 200);
+        clearTimeout(_hideEmptyTimer);
+        _hideEmptyTimer = setTimeout(hideEmptyGroups, 250);
     }
     function toggleZoomToNow() {
         _zoomToNowActive = !_zoomToNowActive;
@@ -745,11 +677,28 @@
         const windowEnd = new Date(end.getTime() + margin);
 
         timeline.setWindow(windowStart, windowEnd, { animation: true });
+        hideEmptyGroups();
     }
     playbackSelected=()=>{
-        videosToAppend=timeline.getSelection().sort() //TODO: make sure they're in order!
-        if(videosToAppend.length==0) {alert('No video selected'); return;}
-        
+        const selectedIds = timeline.getSelection();
+        if (selectedIds.length === 0) { alert('No video selected'); return; }
+
+        // Build ordered list of video filenames from selection
+        videosToAppend = [];
+        selectedIds.forEach(id => {
+            const item = items.get(id);
+            if (!item) return;
+            if (item.className === 'video-file') {
+                // id IS the filename for video-file items
+                videosToAppend.push(String(id));
+            } else if (item._videoFile) {
+                videosToAppend.push(item._videoFile);
+            }
+        });
+        // Sort by filename (which encodes timestamps)
+        videosToAppend.sort();
+        if (videosToAppend.length === 0) { alert('No video found for selection'); return; }
+
         startPlayback().then(() => switchTab('video'));
     }
     document.getElementById('date').value=new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0')+'-'+String(new Date().getDate()).padStart(2,'0')
@@ -784,47 +733,623 @@
         timeline.setGroups(visibleGroups);
     }
 
-    // Set up timeline
-    var items = new vis.DataSet([]);
-    var groups = new vis.DataSet([]);
-    var timeline = new vis.Timeline(
-        document.getElementById('timeline-vis'), 
-        items,
-        groups, 
-        {
-            minHeight:'300px',
-            zoomMin:1000*60,
-            zoomKey:'ctrlKey',
-            showCurrentTime:true,
-            selectable:true,
-            multiselect:true,
-            sequentialSelection:true,
-            multiselectPerGroup:true,
-            stack:false, //Not sure how to get some groups to stack and others not to
-            start:new Date().setHours(7,30,0,0),
-            end:new Date().setHours(20,30,0,0),
-            xss:{disabled:true},
-            cluster:{
-                maxItems:2,
-                clusterCriteria: (first, second) => {
-                    return !(first.className=='video-file'||second.className=='video-file') // only cluster non-video items together
-                }
-            },
-            template: (itemData, element, data) => {
-                if (data.isCluster) {
-                    return `<div>${data.items.length} routines</div>`;
-                } else if (data.className === 'video-file') {
-                    return ''
-                } else {
-                    return `<div>${data.content}</div>`;
-                }
-            },
-        });
-    let _hideEmptyTimer;
-    timeline.on('rangechanged', function () {
-        if (!_zoomToNowProgrammatic) {
-            disableZoomToNow();
+    // ═══════════════════════════════════════════════════════════════════
+    // CANVAS TIMELINE ENGINE
+    // Replaces vis-timeline. Exposes the same items/groups/timeline API.
+    // ═══════════════════════════════════════════════════════════════════
+    ;(function buildCanvasTimeline() {
+
+        // ── Internal data stores ────────────────────────────────────────
+        const _iMap = new Map();   // id → item object
+        const _gMap = new Map();   // id → group object (insertion-ordered)
+
+        // ── Apparatus colours ───────────────────────────────────────────
+        const APP_COL = {
+            vault: { fill:'#5cb85c', stroke:'#3d8b3d', sel:'#80e880', text:'#fff' },
+            bars:  { fill:'#d9534f', stroke:'#a02020', sel:'#f08080', text:'#fff' },
+            beam:  { fill:'#c8a800', stroke:'#8a7200', sel:'#ffe060', text:'#333' },
+            floor: { fill:'#3a8fd4', stroke:'#1f5fa0', sel:'#70c8ff', text:'#fff' },
+        };
+        function appCol(apparatus) {
+            if (!apparatus) return null;
+            const a = apparatus.toLowerCase();
+            if (a.includes('vault')) return APP_COL.vault;
+            if (a.includes('bar'))   return APP_COL.bars;
+            if (a.includes('beam'))  return APP_COL.beam;
+            if (a.includes('floor')) return APP_COL.floor;
+            return null;
         }
+
+        // ── View state ──────────────────────────────────────────────────
+        const ROW_H   = 30;
+        const LABEL_W = 140;
+        const AXIS_H  = 32;
+        let vsMs = new Date().setHours(7,30,0,0);   // viewStart ms
+        let veMs = new Date().setHours(20,30,0,0);  // viewEnd ms
+        let _customTimeMs = null;
+        const _sel = new Set();          // selected item ids
+        let _visGroupIds = null;         // null = show all
+
+        // ── DOM references ──────────────────────────────────────────────
+        const axisCanvas  = document.getElementById('ctl-axis-canvas');
+        const rowsCanvas  = document.getElementById('ctl-rows-canvas');
+        const labelsEl    = document.getElementById('ctl-labels');
+        const axisWrap    = document.getElementById('ctl-axis-canvas-wrap');
+        const rowsWrap    = document.getElementById('ctl-rows-wrap');
+        const nowLineAxis = document.getElementById('ctl-now-line');
+        const nowLineRows = document.getElementById('ctl-now-line-rows');
+        const phAxis      = document.getElementById('ctl-playhead');
+        const phRows      = document.getElementById('ctl-playhead-rows');
+        const tooltipEl   = document.getElementById('ctl-tooltip');
+
+        // Style the secondary now-line / playhead in the rows area
+        for (const el of [nowLineRows, phRows]) {
+            el.style.cssText = 'position:absolute;top:0;bottom:0;width:2px;pointer-events:none;display:none;';
+        }
+        nowLineRows.style.background = 'rgba(220,40,40,0.55)';
+        phRows.style.background      = 'rgba(30,120,255,0.75)';
+        document.getElementById('ctl-axis-label-pad').style.width = LABEL_W + 'px';
+
+        // ── Coordinate helpers ──────────────────────────────────────────
+        function msToFrac(ms)  { return (ms - vsMs) / (veMs - vsMs); }
+        function msToX(ms, w)  { return msToFrac(ms) * w; }
+        function xToMs(x, w)   { return vsMs + (x / w) * (veMs - vsMs); }
+
+        // ── Ordered visible groups ──────────────────────────────────────
+        const APP_ORDER = ['Vault','Bars','Beam','Floor'];
+        function orderedGroups() {
+            let gs = [..._gMap.values()];
+            if (_visGroupIds) gs = gs.filter(g => _visGroupIds.has(g.id));
+            gs.sort((a, b) => {
+                const aV = a.id.startsWith('V|'), bV = b.id.startsWith('V|');
+                if (aV !== bV) return aV ? -1 : 1;   // video rows first
+                if (aV)  return a.id < b.id ? -1 : 1;
+                const [,sA,appA] = a.id.split('|');
+                const [,sB,appB] = b.id.split('|');
+                if (sA !== sB)  return sA < sB ? -1 : 1;
+                const iA = APP_ORDER.indexOf(appA), iB = APP_ORDER.indexOf(appB);
+                return (iA<0?999:iA) - (iB<0?999:iB);
+            });
+            return gs;
+        }
+
+        // ── rAF-batched render ──────────────────────────────────────────
+        let _rafPending = false;
+        function render() {
+            if (_rafPending) return;
+            _rafPending = true;
+            requestAnimationFrame(_draw);
+        }
+
+        function _draw() {
+            _rafPending = false;
+            const gs  = orderedGroups();
+            const dpr = window.devicePixelRatio || 1;
+            const aw  = axisWrap.clientWidth  || 800;
+            const rh  = Math.max(gs.length * ROW_H, 1);
+            const rw  = rowsWrap.clientWidth  || 800;
+
+            // Size axis canvas
+            if (axisCanvas.width !== aw*dpr || axisCanvas.height !== AXIS_H*dpr) {
+                axisCanvas.width = aw*dpr; axisCanvas.height = AXIS_H*dpr;
+                axisCanvas.style.width = aw+'px'; axisCanvas.style.height = AXIS_H+'px';
+            }
+            // Size rows canvas
+            const needRh = rh * dpr;
+            if (rowsCanvas.width !== rw*dpr || rowsCanvas.height !== needRh) {
+                rowsCanvas.width = rw*dpr; rowsCanvas.height = needRh;
+                rowsCanvas.style.width = rw+'px'; rowsCanvas.style.height = rh+'px';
+            }
+            rowsWrap.style.minHeight = Math.max(rh, 260) + 'px';
+
+            const actx = axisCanvas.getContext('2d');
+            const rctx = rowsCanvas.getContext('2d');
+            actx.setTransform(dpr,0,0,dpr,0,0);
+            rctx.setTransform(dpr,0,0,dpr,0,0);
+
+            _drawAxis(actx, aw);
+            _drawRows(rctx, rw, gs, rh);
+            _drawLabels(gs);
+            _positionLines(aw, rw);
+        }
+
+        // ── Axis ticks ──────────────────────────────────────────────────
+        const TICK_INTERVALS = [
+            60e3, 2*60e3, 5*60e3, 10*60e3, 15*60e3, 30*60e3,
+            3600e3, 2*3600e3, 4*3600e3, 6*3600e3, 12*3600e3, 24*3600e3
+        ];
+        function pickInterval(w) {
+            return TICK_INTERVALS.find(iv => iv/(veMs-vsMs)*w >= 55) || TICK_INTERVALS[TICK_INTERVALS.length-1];
+        }
+
+        function _drawAxis(ctx, w) {
+            ctx.clearRect(0,0,w,AXIS_H);
+            ctx.fillStyle = '#e8e8e8'; ctx.fillRect(0,0,w,AXIS_H);
+            const iv = pickInterval(w);
+            const t0 = Math.ceil(vsMs/iv)*iv;
+            ctx.strokeStyle = '#aaa'; ctx.fillStyle = '#444';
+            ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            for (let t = t0; t <= veMs; t += iv) {
+                const x = msToX(t, w);
+                ctx.beginPath(); ctx.moveTo(x, AXIS_H-8); ctx.lineTo(x, AXIS_H); ctx.lineWidth=1; ctx.stroke();
+                const d = new Date(t);
+                ctx.fillText(d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0'), x, AXIS_H/2-2);
+            }
+            // minor ticks
+            const minor = iv/2;
+            if (minor/(veMs-vsMs)*w >= 20) {
+                const m0 = Math.ceil(vsMs/minor)*minor;
+                ctx.strokeStyle='#ccc'; ctx.lineWidth=0.5;
+                for (let t=m0; t<=veMs; t+=minor) {
+                    if (t%iv===0) continue;
+                    const x=msToX(t,w);
+                    ctx.beginPath(); ctx.moveTo(x,AXIS_H-4); ctx.lineTo(x,AXIS_H); ctx.stroke();
+                }
+            }
+        }
+
+        // ── Row drawing ─────────────────────────────────────────────────
+        function _drawRows(ctx, w, gs, totalH) {
+            ctx.clearRect(0,0,w,totalH);
+            const iv = pickInterval(w);
+
+            gs.forEach((g, ri) => {
+                const ry = ri * ROW_H;
+                // Alternating row background
+                ctx.fillStyle = ri%2===0 ? '#f8f8f8' : '#f0f0f0';
+                ctx.fillRect(0, ry, w, ROW_H);
+                // Grid lines
+                ctx.strokeStyle='rgba(0,0,0,0.05)'; ctx.lineWidth=1;
+                const t0=Math.ceil(vsMs/iv)*iv;
+                for (let t=t0; t<=veMs; t+=iv) {
+                    const x=msToX(t,w);
+                    ctx.beginPath(); ctx.moveTo(x,ry); ctx.lineTo(x,ry+ROW_H); ctx.stroke();
+                }
+
+                // Items in this group that overlap the view
+                const groupItems = [..._iMap.values()].filter(it => {
+                    if (it.group !== g.id) return false;
+                    const s = +it.start, e = +(it.end||it.start);
+                    return e >= vsMs && s <= veMs;
+                });
+
+                const pad=3, ih=ROW_H-pad*2;
+                groupItems.forEach(item => {
+                    const s = +item.start, e = +(item.end||item.start);
+                    const x1 = Math.max(0, msToX(s, w));
+                    const x2 = e>s ? Math.min(w, msToX(e, w)) : x1;
+                    const iw  = x2 - x1;
+                    const sel = _sel.has(item.id);
+                    const isVideo = item.className === 'video-file';
+
+                    if (isVideo) {
+                        _filmstrip(ctx, x1, ry+pad, Math.max(iw,3), ih, sel);
+                    } else if (iw >= 6) {
+                        // Range box
+                        const col = appCol(item._apparatus);
+                        ctx.fillStyle   = sel ? '#ff9900' : (col?col.fill:'#6a9fd8');
+                        ctx.strokeStyle = sel ? '#ffcc44' : (col?col.stroke:'#3a6fa8');
+                        ctx.lineWidth = sel ? 2 : 1;
+                        _rr(ctx, x1, ry+pad, iw, ih, 3); ctx.fill(); ctx.stroke();
+                        // Play badge if video attached — dark pill so it's visible on any colour
+                        let labelX = x1+4;
+                        if (item._videoFile) {
+                            const bw=16, bh=ih-2, bx=labelX, by=ry+pad+1;
+                            ctx.fillStyle='rgba(0,0,0,0.5)';
+                            _rr(ctx,bx,by,bw,bh,2); ctx.fill();
+                            ctx.fillStyle='#fff';
+                            ctx.font='bold 9px sans-serif'; ctx.textBaseline='middle'; ctx.textAlign='center';
+                            ctx.fillText('▶', bx+bw/2, ry+pad+ih/2);
+                            // Store badge screen rect on item for click detection
+                            item._badgeRect={x:bx, y:by, w:bw, h:bh, row:ri};
+                            labelX += bw+3;
+                        } else {
+                            delete item._badgeRect;
+                        }
+                        // Clipped label
+                        ctx.save();
+                        ctx.rect(labelX, ry+pad, x2-labelX-3, ih); ctx.clip();
+                        ctx.fillStyle = sel ? '#000' : (col?col.text:'#fff');
+                        ctx.font='10px sans-serif'; ctx.textBaseline='middle'; ctx.textAlign='left';
+                        ctx.fillText(item._label||'', labelX, ry+pad+ih/2);
+                        ctx.restore();
+                    } else {
+                        // Point item: ■ if ended, ▶ if in-progress
+                        const col = appCol(item._apparatus);
+                        const hasEnd = item.end ;
+                        const symbol = hasEnd ? '■' : '▶';
+                        const cx = (x1+x2)/2, cy = ry + ROW_H/2;
+                        const sz = sel ? 13 : 11;
+                        ctx.font = `${sz}px sans-serif`;
+                        ctx.textBaseline = 'middle';
+                        ctx.textAlign = 'center';
+                        // Shadow/outline for legibility
+                        ctx.fillStyle = sel ? '#ff9900' : (col ? col.fill : '#6a9fd8');
+                        ctx.fillText(symbol, cx, cy);
+                        if (sel) {
+                            ctx.strokeStyle = '#ffcc44';
+                            ctx.lineWidth = 1;
+                            ctx.strokeText(symbol, cx, cy);
+                        }
+                        // Label to the right of the symbol
+                        const labelX = cx + sz * 0.75;
+                        const availW = rowsCanvas.width / (window.devicePixelRatio||1) - labelX - 2;
+                        if (availW > 20) {
+                            ctx.save();
+                            ctx.rect(labelX, ry, availW, ROW_H); ctx.clip();
+                            ctx.fillStyle = sel ? '#222' : '#333';
+                            ctx.font = '10px sans-serif';
+                            ctx.textAlign = 'left';
+                            ctx.fillText(item._label || '', labelX + 3, cy);
+                            ctx.restore();
+                        }
+                    }
+                });
+                // Row separator
+                ctx.strokeStyle='rgba(0,0,0,0.1)'; ctx.lineWidth=1;
+                ctx.beginPath(); ctx.moveTo(0,ry+ROW_H-0.5); ctx.lineTo(w,ry+ROW_H-0.5); ctx.stroke();
+            });
+        }
+
+        function _filmstrip(ctx, x, y, w, h, sel) {
+            if (w<2) return;
+            ctx.fillStyle = sel ? '#ff9900' : '#6a7a8a';
+            _rr(ctx,x,y,w,h,2); ctx.fill();
+            if (sel) { ctx.strokeStyle='#ffcc44'; ctx.lineWidth=2; _rr(ctx,x,y,w,h,2); ctx.stroke(); }
+            // Sprocket holes
+            const hw=5, hh=Math.min(3,Math.floor(h/4)), hgap=9;
+            ctx.fillStyle = sel ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0.4)';
+            for (let hx=x+3; hx+hw<x+w-1; hx+=hw+hgap) {
+                ctx.fillRect(hx, y+1, hw, hh);
+                ctx.fillRect(hx, y+h-1-hh, hw, hh);
+            }
+            // Film body gradient hint
+            const grad = ctx.createLinearGradient(x,y,x,y+h);
+            grad.addColorStop(0,   'rgba(255,255,255,0.15)');
+            grad.addColorStop(0.25,'rgba(255,255,255,0)');
+            grad.addColorStop(0.75,'rgba(255,255,255,0)');
+            grad.addColorStop(1,   'rgba(255,255,255,0.15)');
+            ctx.fillStyle=grad; ctx.fillRect(x,y,w,h);
+        }
+
+        function _rr(ctx, x, y, w, h, r) {
+            r=Math.min(r,w/2,h/2);
+            ctx.beginPath();
+            ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.arcTo(x+w,y,x+w,y+r,r);
+            ctx.lineTo(x+w,y+h-r); ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
+            ctx.lineTo(x+r,y+h); ctx.arcTo(x,y+h,x,y+h-r,r);
+            ctx.lineTo(x,y+r); ctx.arcTo(x,y,x+r,y,r);
+            ctx.closePath();
+        }
+
+        // ── Label column ────────────────────────────────────────────────
+        function _drawLabels(gs) {
+            labelsEl.style.width  = LABEL_W + 'px';
+            labelsEl.style.minHeight = Math.max(gs.length*ROW_H,260)+'px';
+            // Sync DOM label divs with groups
+            const existing = [...labelsEl.children];
+            while (labelsEl.children.length < gs.length) {
+                const d=document.createElement('div'); d.className='ctl-label'; labelsEl.appendChild(d);
+            }
+            while (labelsEl.children.length > gs.length) labelsEl.removeChild(labelsEl.lastChild);
+            gs.forEach((g,i) => {
+                const d=labelsEl.children[i];
+                d.innerHTML = g.content||g.id;
+                d.className = 'ctl-label '+(g.className||'');
+                d.style.height = ROW_H+'px';
+                d.style.background = i%2===0?'#ececec':'#e4e4e4';
+            });
+        }
+
+        // ── Now-line & playhead positioning ─────────────────────────────
+        function _positionLines(aw, rw) {
+            const now = Date.now();
+            const showNow = now >= vsMs && now <= veMs;
+            const nx = msToX(now, aw);
+            nowLineAxis.style.display = showNow?'block':'none';
+            nowLineAxis.style.left    = nx+'px';
+            nowLineRows.style.display = showNow?'block':'none';
+            nowLineRows.style.left    = msToX(now,rw)+'px';
+
+            const showPh = _customTimeMs!==null && _customTimeMs>=vsMs && _customTimeMs<=veMs;
+            phAxis.style.display = showPh?'block':'none';
+            phAxis.style.left    = msToX(_customTimeMs,aw)+'px';
+            phRows.style.display = showPh?'block':'none';
+            phRows.style.left    = msToX(_customTimeMs,rw)+'px';
+        }
+
+        // ── Tooltip ─────────────────────────────────────────────────────
+        let _hoverId = null;
+        function _showTip(item, cx, cy) {
+            if (!item) { tooltipEl.style.display='none'; _hoverId=null; return; }
+            _hoverId = item.id;
+            let html = item.title || item._label || String(item.id);
+            if (item._videoFile)       html += '<br/><em style="opacity:0.7">▶ click badge to play</em>';
+            if (item.className==='video-file') html = (item.title||String(item.id)) + '<br/><em style="opacity:0.7">click to play</em>';
+            tooltipEl.innerHTML = html;
+            tooltipEl.style.display = 'block';
+            _moveTip(cx, cy);
+        }
+        function _moveTip(cx, cy) {
+            const tw=tooltipEl.offsetWidth, th=tooltipEl.offsetHeight;
+            let tx=cx+14, ty=cy-10;
+            if (tx+tw>window.innerWidth-8) tx=cx-tw-14;
+            if (ty+th>window.innerHeight-8) ty=window.innerHeight-th-8;
+            tooltipEl.style.left=tx+'px'; tooltipEl.style.top=ty+'px';
+        }
+
+        // ── Hit testing ─────────────────────────────────────────────────
+        function _itemAt(x, y, w) {
+            const gs = orderedGroups();
+            const ri = Math.floor(y/ROW_H);
+            if (ri<0||ri>=gs.length) return null;
+            const g=gs[ri];
+            const pad=3, ih=ROW_H-pad*2;
+            let best=null, bestW=Infinity;
+            for (const item of _iMap.values()) {
+                if (item.group!==g.id) continue;
+                const s=+item.start, e=+(item.end||item.start);
+                const x1=msToX(s,w), x2=e>s?msToX(e,w):x1;
+                const iw=x2-x1;
+                if (iw>=6) { if (x>=x1&&x<=x2&&iw<bestW) { best=item; bestW=iw; } }
+                else { if (Math.abs((x1+x2)/2-x)<=9&&iw<bestW) { best=item; bestW=iw; } }
+            }
+            return best;
+        }
+
+        // ── Interaction ─────────────────────────────────────────────────
+        let _drag=null;  // {startClientX, vs0, ve0}
+        let _pinch=null; // {dist, vs0, ve0}
+        let _lastTapMs=0;
+
+        function _canvasPos(e) {
+            const r=rowsWrap.getBoundingClientRect();
+            const src=e.touches?e.touches[0]:e;
+            return {x:src.clientX-r.left, y:src.clientY-r.top};
+        }
+
+        rowsWrap.addEventListener('mousedown', e=>{
+            _drag={startClientX:e.clientX, vs0:vsMs, ve0:veMs};
+            rowsWrap.style.cursor='grabbing';
+            e.preventDefault();
+        });
+
+        window.addEventListener('mousemove', e=>{
+            if (_drag) {
+                const span=_drag.ve0-_drag.vs0;
+                const shift=-( (e.clientX-_drag.startClientX) / rowsWrap.clientWidth ) * span;
+                vsMs=_drag.vs0+shift; veMs=_drag.ve0+shift;
+                render(); _emit('rangechanged',{});
+            } else {
+                const r=rowsWrap.getBoundingClientRect();
+                const x=e.clientX-r.left, y=e.clientY-r.top;
+                if (x>=0&&x<=rowsWrap.clientWidth&&y>=0&&y<=rowsWrap.clientHeight) {
+                    const item=_itemAt(x,y,rowsWrap.clientWidth);
+                    if (item?.id!==_hoverId) _showTip(item,e.clientX,e.clientY);
+                    else if (item) _moveTip(e.clientX,e.clientY);
+                } else { tooltipEl.style.display='none'; _hoverId=null; }
+            }
+        });
+        window.addEventListener('mouseup', e=>{
+            if (_drag && Math.abs(e.clientX-_drag.startClientX)<5) {
+                // treat as click
+                const {x,y}=_canvasPos(e);
+                _handleClick(x,y,e.shiftKey||e.ctrlKey||e.metaKey);
+            }
+            _drag=null; rowsWrap.style.cursor='crosshair';
+        });
+        rowsWrap.addEventListener('mouseleave',()=>{ tooltipEl.style.display='none'; _hoverId=null; });
+
+        function _handleClick(x,y,multi) {
+            // Check if click lands on a play badge first
+            for (const item of _iMap.values()) {
+                const b = item._badgeRect;
+                if (b && x>=b.x && x<=b.x+b.w && y>=b.y && y<=b.y+b.h) {
+                    videosToAppend = [item._videoFile];
+                    startPlayback().then(()=>switchTab('video'));
+                    return;
+                }
+            }
+            // video-file items: single click plays, shift-click range-selects within group
+            const item = _itemAt(x, y, rowsWrap.clientWidth);
+
+            if (item && item.className === 'video-file') {
+                if (multi && _sel.size > 0) {
+                    // Find the anchor — the first selected video-file item in the same group
+                    const anchor = [..._iMap.values()].find(
+                        it => _sel.has(it.id) && it.className === 'video-file' && it.group === item.group
+                    );
+                    if (anchor) {
+                        // Select all video-file items in this group between anchor and clicked item by time
+                        const aStart = +anchor.start, bStart = +item.start;
+                        const lo = Math.min(aStart, bStart), hi = Math.max(aStart, bStart);
+                        _sel.clear();
+                        [..._iMap.values()]
+                            .filter(it => it.className === 'video-file' && it.group === item.group
+                                      && +it.start >= lo && +it.start <= hi)
+                            .forEach(it => _sel.add(it.id));
+                        render(); _emit('select', {items:[..._sel]});
+                        return;
+                    }
+                }
+                // Plain click on video-file: select it (for Load & Play) or play if already sole selection
+                if (_sel.size === 1 && _sel.has(item.id)) {
+                    // Second click on already-selected solo item → play it
+                    videosToAppend = [String(item.id)];
+                    startPlayback().then(()=>switchTab('video'));
+                    return;
+                }
+                _sel.clear(); _sel.add(item.id);
+                render(); _emit('select', {items:[..._sel]});
+                return;
+            }
+
+            // Event (routine) items: single-select only, no multi-select
+            if (!item) { _sel.clear(); render(); _emit('select',{items:[]}); return; }
+            if (_sel.size === 1 && _sel.has(item.id)) _sel.clear();
+            else { _sel.clear(); _sel.add(item.id); }
+            render(); _emit('select',{items:[..._sel]});
+        }
+
+        // Touch
+        rowsWrap.addEventListener('touchstart', e=>{
+            if (e.touches.length===1) {
+                _drag={startClientX:e.touches[0].clientX, vs0:vsMs, ve0:veMs};
+                const now=Date.now();
+                if (now-_lastTapMs<300) { _doubleTap(e.touches[0].clientX); }
+                _lastTapMs=now;
+            } else if (e.touches.length===2) {
+                _drag=null;
+                _pinch={dist:_touchDist(e), vs0:vsMs, ve0:veMs,
+                        cx:(_touchMidX(e)-rowsWrap.getBoundingClientRect().left)};
+            }
+            e.preventDefault();
+        },{passive:false});
+
+        rowsWrap.addEventListener('touchmove', e=>{
+            if (e.touches.length===1&&_drag) {
+                const span=_drag.ve0-_drag.vs0;
+                const shift=-((e.touches[0].clientX-_drag.startClientX)/rowsWrap.clientWidth)*span;
+                vsMs=_drag.vs0+shift; veMs=_drag.ve0+shift;
+                render(); _emit('rangechanged',{});
+            } else if (e.touches.length===2&&_pinch) {
+                const newDist=_touchDist(e);
+                const factor=_pinch.dist/newDist;
+                const {vs0,ve0,cx}=_pinch;
+                _zoomAround(cx,factor,vs0,ve0);
+                render(); _emit('rangechanged',{});
+            }
+            e.preventDefault();
+        },{passive:false});
+
+        rowsWrap.addEventListener('touchend', e=>{
+            if (e.touches.length===0&&_drag&&Math.abs(e.changedTouches[0].clientX-_drag.startClientX)<8) {
+                const r=rowsWrap.getBoundingClientRect();
+                const x=e.changedTouches[0].clientX-r.left, y=e.changedTouches[0].clientY-r.top;
+                // multi=true when there's already a video-file selection (range-select gesture)
+                const hasVideoSel = [..._sel].some(id=>{ const it=_iMap.get(id); return it&&it.className==='video-file'; });
+                _handleClick(x, y, hasVideoSel);
+            }
+            _drag=null; _pinch=null;
+        });
+
+        function _touchDist(e) {
+            return Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+        }
+        function _touchMidX(e) { return (e.touches[0].clientX+e.touches[1].clientX)/2; }
+        function _doubleTap(clientX) {
+            const x=clientX-rowsWrap.getBoundingClientRect().left;
+            _zoomAround(x,0.45,vsMs,veMs); render(); _emit('rangechanged',{});
+        }
+
+        // Scroll-wheel zoom (ctrl not required — axis covers pan)
+        rowsWrap.addEventListener('wheel', e=>{
+            e.preventDefault();
+            const x=e.clientX-rowsWrap.getBoundingClientRect().left;
+            _zoomAround(x, e.deltaY>0?1.18:1/1.18, vsMs, veMs);
+            render(); _emit('rangechanged',{});
+        },{passive:false});
+
+        function _zoomAround(px, factor, vs, ve) {
+            const span=ve-vs, ratio=px/rowsWrap.clientWidth;
+            const pivot=vs+ratio*span;
+            const newSpan=Math.max(60e3, Math.min(span*factor, 7*24*3600e3));
+            vsMs=pivot-ratio*newSpan; veMs=pivot+(1-ratio)*newSpan;
+        }
+
+        // ── Event emitter ───────────────────────────────────────────────
+        const _listeners={};
+        function _emit(name,data){ (_listeners[name]||[]).forEach(fn=>fn(data)); }
+
+        // ── Live now-line ticker ────────────────────────────────────────
+        setInterval(()=>{ _positionLines(axisWrap.clientWidth||800, rowsWrap.clientWidth||800); }, 2000);
+
+        // ── Resize ──────────────────────────────────────────────────────
+        new ResizeObserver(render).observe(rowsWrap);
+        new ResizeObserver(render).observe(axisWrap);
+
+        // ═══════════════════════════════════════════════════════════════
+        // PUBLIC API — matches the interface used by the rest of the page
+        // ═══════════════════════════════════════════════════════════════
+
+        // items DataSet shim
+        window.items = {
+            add(arr) {
+                [].concat(arr).forEach(it => {
+                    const existing = _iMap.get(it.id)||{};
+                    const merged = {...existing, ...it};
+                    // Derive internal fields for fast canvas use
+                    merged._apparatus = it.group ? it.group.split('|')[2] : (existing._apparatus||'');
+                    merged._label     = _plainText(it.content || existing.content || '');
+                    _iMap.set(it.id, merged);
+                });
+                render();
+            },
+            update(arr) {
+                [].concat(arr).forEach(it => {
+                    const existing = _iMap.get(it.id)||{};
+                    const merged = {...existing, ...it};
+                    // Re-derive canvas fields if relevant props changed
+                    if (it.group)              merged._apparatus = it.group.split('|')[2];
+                    if (it.content !== undefined) merged._label = _plainText(it.content);
+                    // _videoFile and other _ fields pass through from caller directly
+                    _iMap.set(it.id, merged);
+                });
+                render();
+            },
+            remove(arr) { [].concat(arr).forEach(it=>_iMap.delete(typeof it==='object'?it.id:it)); render(); },
+            clear()     { _iMap.clear(); render(); },
+            get(id)     { return id==null ? [..._iMap.values()] : (_iMap.get(id)||null); },
+        };
+
+        // groups DataSet shim
+        window.groups = {
+            add(arr) {
+                [].concat(arr).forEach(g=>{ if(!_gMap.has(g.id)) _gMap.set(g.id,g); });
+                render();
+            },
+            update(arr) {
+                [].concat(arr).forEach(g=>_gMap.set(g.id,{...(_gMap.get(g.id)||{}), ...g}));
+                render();
+            },
+            clear() { _gMap.clear(); render(); },
+            get()   { return [..._gMap.values()]; },
+        };
+
+        // timeline object shim
+        window.timeline = {
+            on(name, fn) { _listeners[name]=_listeners[name]||[]; _listeners[name].push(fn); },
+            getWindow()           { return {start:new Date(vsMs), end:new Date(veMs)}; },
+            setWindow(s, e, opts) {
+                vsMs=+s; veMs=+e; render();
+                if (!opts?.animation) _emit('rangechanged',{});
+            },
+            setGroups(gs) {
+                _visGroupIds = gs ? new Set(gs.map(g=>g.id)) : null;
+                render();
+            },
+            getSelection()    { return [..._sel]; },
+            setSelection(ids) { _sel.clear(); ids.forEach(id=>_sel.add(id)); render(); },
+            setCustomTime(t)  { _customTimeMs=+t; _positionLines(axisWrap.clientWidth||800,rowsWrap.clientWidth||800); },
+            removeCustomTime(){ _customTimeMs=null; _positionLines(axisWrap.clientWidth||800,rowsWrap.clientWidth||800); },
+            addCustomTime(t)  { _customTimeMs=+t; _positionLines(axisWrap.clientWidth||800,rowsWrap.clientWidth||800); },
+        };
+
+        // Helper: strip HTML to plain text for canvas labels
+        function _plainText(html) {
+            const d=document.createElement('div'); d.innerHTML=html;
+            return d.textContent||d.innerText||'';
+        }
+
+        // Initial render
+        render();
+
+    })(); // end canvas timeline IIFE
+
+
+    let _hideEmptyTimer;
+    timeline.on('rangechanged', function() {
+        if (!_zoomToNowProgrammatic) disableZoomToNow();
         clearTimeout(_hideEmptyTimer);
         _hideEmptyTimer = setTimeout(hideEmptyGroups, 200);
     });
@@ -838,17 +1363,18 @@
             }
         }
     });
-    // Delegated handler for play buttons injected into timeline items and score table
+
+    // Delegated handler for play buttons in score table
     document.addEventListener('click', function(e) {
         var btn = e.target.closest('.play-btn');
         if (btn) {
             e.stopPropagation();
             document.getElementById('player').src = '/video/' + btn.dataset.video;
-            document.getElementById('videodesc').innerHTML=": "+btn.dataset.desc; 
+            document.getElementById('videodesc').innerHTML = ': ' + btn.dataset.desc;
             switchTab('video');
         }
     });
-	setTimelineWindow()
+    setTimelineWindow();
     
     // Fetch a file and return its Uint8Array
     async function fetchVideoFile(url) {
