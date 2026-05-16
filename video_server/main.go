@@ -115,14 +115,26 @@ func isCacheableAsset(urlPath string) bool {
 
 func main() {
 	listen := flag.Bool("listen", false, "Enable UDP listeners for keypad and iPad devices")
+	knownIPsFlag := flag.String("scoregen-ips", "", "Comma-separated list of allowed source IPs for UDP messages (e.g. 192.168.1.10,192.168.1.11); empty means allow all")
 	flag.Parse()
+
+	var knownIPs map[string]struct{}
+	if *knownIPsFlag != "" {
+		knownIPs = make(map[string]struct{})
+		for _, ip := range strings.Split(*knownIPsFlag, ",") {
+			if trimmed := strings.TrimSpace(ip); trimmed != "" {
+				knownIPs[trimmed] = struct{}{}
+			}
+		}
+		log.Printf("Restricting UDP sources to: %s", *knownIPsFlag)
+	}
 
 	os.MkdirAll(uploadDir, 0755)
 	initDB()
 	defer db.Close()
 
 	if *listen {
-		listenUDP()
+		listenUDP(knownIPs)
 		log.Printf("UDP listeners active on ports %d, %d, %d", keypadUDPPort, ipadUDPPort, scoregen1Port)
 	} else {
 		log.Println("UDP listening disabled (pass -listen to enable)")

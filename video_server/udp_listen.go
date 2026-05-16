@@ -14,7 +14,7 @@ import (
 // The scoring listener on the same machine will already be handling these ports
 // if running; this is for standalone operation where the video server itself
 // receives UDP directly from the network.
-func listenUDP() {
+func listenUDP(knownIPs map[string]struct{}) {
 	ports := []int{keypadUDPPort, ipadUDPPort, scoregen1Port}
 	for _, port := range ports {
 		p := port
@@ -34,6 +34,14 @@ func listenUDP() {
 				}
 				data := string(buf[:n])
 				server := raddr.IP.String()
+
+				// Drop packets from unknown sources when an allowlist is configured.
+				if len(knownIPs) > 0 {
+					if _, ok := knownIPs[server]; !ok {
+						log.Printf("UDP packet from unknown source %s on port %d — ignored", server, port)
+						continue
+					}
+				}
 
 				// Port 23467 only carries SCOREGEN-LAST messages; discard others.
 				if port == scoregen1Port && (len(data) < 13 || data[:13] != "SCOREGEN-LAST") {
