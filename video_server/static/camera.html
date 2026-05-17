@@ -451,7 +451,7 @@ function swapRecorders() {
 function startTriggeredRecorder(slot, msg) {
     clearTimeout(triggeredRecorders[slot].safetyTimeout);
     triggeredRecorders[slot].serverIP = msg.server;
-    var filename = "RoutineID_"+msg.id+(msg.apparatus?"_"+msg.apparatus:"")+(msg.name?"_"+msg.name:"")+(msg.level?"_"+msg.level:"")+"_"+Array.from({length:6}, () => 'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random()*36)]).join('');
+    var filename = "RoutineID_"+msg.id+(msg.apparatus?"_"+msg.apparatus:"")+(msg.name?"_"+msg.name:"")+(msg.competitor?"_"+msg.competitor:"")+(msg.level?"_"+msg.level:"")+"_"+Array.from({length:6}, () => 'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random()*36)]).join('');
     filename = filename.replace(/[^a-zA-Z0-9_\-]/g, '_'); // sanitise for filesystem
     try { triggeredRecorders[slot].recorder.stop(); } catch(e) {}
     triggeredRecorders[slot].recorder.addEventListener('dataavailable', (e) => {

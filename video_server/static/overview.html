@@ -1145,8 +1145,9 @@
             for (const item of _iMap.values()) {
                 const b = item._badgeRect;
                 if (b && x>=b.x && x<=b.x+b.w && y>=b.y && y<=b.y+b.h) {
-                    videosToAppend = [item._videoFile];
-                    startPlayback().then(()=>switchTab('video'));
+                    document.getElementById('player').src = '/video/' + item._videoFile;
+                    document.getElementById('videodesc').innerHTML = ': ' + item._videoFile;
+                    switchTab('video');
                     return;
                 }
             }
@@ -1189,6 +1190,7 @@
             if (_sel.size === 1 && _sel.has(item.id)) _sel.clear();
             else { _sel.clear(); _sel.add(item.id); }
             render(); _emit('select',{items:[..._sel]});
+            switchTab('scores');
         }
 
         // Touch
