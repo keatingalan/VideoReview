@@ -81,43 +81,18 @@
         #pane-video:fullscreen #video-controls-bar,
         #pane-video:-webkit-full-screen #video-controls-bar,
         #pane-video.is-fullscreen #video-controls-bar {
-            position: absolute;
-            left: 16px;
-            right: 16px;
-            top: 16px;
-            bottom: auto;
-            background: rgba(0,0,0,0.45);
-            border-radius: 6px;
-            padding: 8px;
-            transition: opacity 0.2s ease;
-            opacity: 1;
-            z-index: 20;
-        }
-        #pane-video.is-fullscreen .fullscreen-pref,
-        #pane-video:fullscreen .fullscreen-pref,
-        #pane-video:-webkit-full-screen .fullscreen-pref {
-            display: none !important;
+            /* rules now consolidated above */
         }
         #pane-video:not(:hover):fullscreen #video-controls-bar,
         #pane-video:not(:hover):-webkit-full-screen #video-controls-bar,
         #pane-video.is-fullscreen:not(:hover) #video-controls-bar {
-            opacity: 0;
+            /* hover-hide replaced by JS inactivity timer — see updateFullscreenState() */
         }
 
         /* Overlay toolbar — top-right of the video, fades in on hover */
         #video-btn-toolbar {
-            position: absolute;
-            top: 8px;
-            right: 8px;
-            z-index: 10;
-            display: flex;
-            flex-direction: row;
-            gap: 6px;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.2s ease;
+            display: none; /* merged into #video-controls-bar */
         }
-        #pane-video:hover #video-btn-toolbar { opacity: 1; pointer-events: auto; }
 
         #record-btn {
             display: none;               /* hidden until state classes applied */
@@ -146,6 +121,41 @@
         @keyframes rec-pulse {
             0%, 100% { opacity: 1; }
             50%       { opacity: 0.5; }
+        }
+
+        /* Unified controls bar — always visible; fades out in fullscreen after inactivity */
+        #video-controls-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 8px;
+            background: #333;
+            flex-wrap: wrap;
+            transition: opacity 0.4s ease;
+        }
+        #pane-video:fullscreen #video-controls-bar,
+        #pane-video:-webkit-full-screen #video-controls-bar,
+        #pane-video.is-fullscreen #video-controls-bar {
+            position: absolute;
+            left: 16px;
+            right: 16px;
+            top: 16px;
+            bottom: auto;
+            background: rgba(0,0,0,0.55);
+            border-radius: 6px;
+            padding: 8px;
+            z-index: 20;
+        }
+        #pane-video:fullscreen #video-controls-bar.fs-hidden,
+        #pane-video:-webkit-full-screen #video-controls-bar.fs-hidden,
+        #pane-video.is-fullscreen #video-controls-bar.fs-hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        #pane-video:fullscreen .fullscreen-pref,
+        #pane-video:-webkit-full-screen .fullscreen-pref,
+        #pane-video.is-fullscreen .fullscreen-pref {
+            display: none !important;
         }
 
         /* event table pane */
@@ -364,13 +374,11 @@
             </div>
             <div id="pane-video" class="tab-pane">
                 <video id="player" autoplay controls poster="instructions.jpeg"></video>
-                <div id="video-btn-toolbar">
+                <div id="video-controls-bar" style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:#333;flex-wrap:wrap;">
                     <button id="record-btn" onclick="toggleClipRecording()" title="Record a clip">
                         <svg id="record-icon" xmlns="http://www.w3.org/2000/svg" height="14px" viewBox="0 -960 960 960" width="14px" fill="currentColor"><circle cx="480" cy="-480" r="200"/><path d="M480-80q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/></svg>
                         <span id="record-btn-label">Rec</span>
                     </button>
-                </div>
-                <div id="video-controls-bar" style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:#333;flex-wrap:wrap;">
                     <span style="color:#aaa;font-size:0.8em;">Speed:</span>
                     <button onclick="setPlaybackSpeed(1)"   id="speed-1"    style="font-size:0.75em;padding:2px 6px;background:#2a7ae2;color:#fff;border:1px solid #777;border-radius:3px;cursor:pointer;">1×</button>
                     <button onclick="setPlaybackSpeed(0.5)" id="speed-0.5"  style="font-size:0.75em;padding:2px 6px;background:#555;color:#fff;border:1px solid #777;border-radius:3px;cursor:pointer;">½×</button>
@@ -1570,22 +1578,57 @@
         video.currentTime = nextTime;
     }
 
-    function updateFullscreenState() {
-        const pane = document.getElementById('pane-video');
-        const fsElement = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement;
-        if (pane) {
-            if (fsElement === pane) {
-                pane.classList.add('is-fullscreen');
-            } else {
-                pane.classList.remove('is-fullscreen');
+    // ── Fullscreen + toolbar auto-hide ────────────────────────────────────────
+    (function () {
+        var pane       = document.getElementById('pane-video');
+        var bar        = document.getElementById('video-controls-bar');
+        var hideTimer  = null;
+        var HIDE_DELAY = 3000; // ms of inactivity before hiding
+
+        function isFullscreen() {
+            var fs = document.fullscreenElement || document.webkitFullscreenElement ||
+                     document.mozFullScreenElement || document.msFullscreenElement;
+            return fs === pane || pane.classList.contains('is-fullscreen');
+        }
+
+        function showBar() {
+            bar.classList.remove('fs-hidden');
+            clearTimeout(hideTimer);
+            if (isFullscreen()) {
+                hideTimer = setTimeout(function () {
+                    bar.classList.add('fs-hidden');
+                }, HIDE_DELAY);
             }
         }
-    }
-    document.addEventListener('fullscreenchange', updateFullscreenState);
-    document.addEventListener('webkitfullscreenchange', updateFullscreenState);
-    document.addEventListener('mozfullscreenchange', updateFullscreenState);
-    document.addEventListener('MSFullscreenChange', updateFullscreenState);
-    updateFullscreenState();
+
+        // Any activity inside the video pane shows the bar and restarts the timer
+        pane.addEventListener('mousemove',  showBar);
+        pane.addEventListener('touchstart', showBar, { passive: true });
+        pane.addEventListener('keydown',    showBar);
+
+        function updateFullscreenState() {
+            var fs = document.fullscreenElement || document.webkitFullscreenElement ||
+                     document.mozFullScreenElement || document.msFullscreenElement;
+            if (fs === pane) {
+                pane.classList.add('is-fullscreen');
+                // Start the auto-hide countdown
+                clearTimeout(hideTimer);
+                hideTimer = setTimeout(function () {
+                    bar.classList.add('fs-hidden');
+                }, HIDE_DELAY);
+            } else {
+                pane.classList.remove('is-fullscreen');
+                clearTimeout(hideTimer);
+                bar.classList.remove('fs-hidden');
+            }
+        }
+
+        document.addEventListener('fullscreenchange',       updateFullscreenState);
+        document.addEventListener('webkitfullscreenchange', updateFullscreenState);
+        document.addEventListener('mozfullscreenchange',    updateFullscreenState);
+        document.addEventListener('MSFullscreenChange',     updateFullscreenState);
+        updateFullscreenState();
+    })();
     setPlaybackSpeed(1);
     // Apply fullscreen when video starts playing
     document.getElementById('player').addEventListener('play', function() {

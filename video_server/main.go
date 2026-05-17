@@ -114,19 +114,22 @@ func isCacheableAsset(urlPath string) bool {
 }
 
 func main() {
-	listen := flag.Bool("listen", false, "Enable UDP listeners for keypad and iPad devices")
-	knownIPsFlag := flag.String("scoregen-ips", "", "Comma-separated list of allowed source IPs for UDP messages (e.g. 192.168.1.10,192.168.1.11); empty means allow all")
+	// -listen [IP,IP,...]
+	//   Omitted                       -> UDP disabled
+	//   -listen                       -> listen, accept any source IP
+	//   -listen 192.168.1.10,1.11     -> listen, accept only those IPs
+	listen := flag.Bool("listen", false, "Enable UDP listeners; optionally follow with comma-separated allowed source IPs")
 	flag.Parse()
 
 	var knownIPs map[string]struct{}
-	if *knownIPsFlag != "" {
+	if *listen && len(flag.Args()) > 0 {
 		knownIPs = make(map[string]struct{})
-		for _, ip := range strings.Split(*knownIPsFlag, ",") {
+		for _, ip := range strings.Split(flag.Args()[0], ",") {
 			if trimmed := strings.TrimSpace(ip); trimmed != "" {
 				knownIPs[trimmed] = struct{}{}
 			}
 		}
-		log.Printf("Restricting UDP sources to: %s", *knownIPsFlag)
+		log.Printf("Restricting UDP sources to: %s", flag.Args()[0])
 	}
 
 	os.MkdirAll(uploadDir, 0755)
