@@ -78,16 +78,6 @@
             height: 100%;
             min-height: 0;
         }
-        #pane-video:fullscreen #video-controls-bar,
-        #pane-video:-webkit-full-screen #video-controls-bar,
-        #pane-video.is-fullscreen #video-controls-bar {
-            /* rules now consolidated above */
-        }
-        #pane-video:not(:hover):fullscreen #video-controls-bar,
-        #pane-video:not(:hover):-webkit-full-screen #video-controls-bar,
-        #pane-video.is-fullscreen:not(:hover) #video-controls-bar {
-            /* hover-hide replaced by JS inactivity timer — see updateFullscreenState() */
-        }
 
         /* Overlay toolbar — top-right of the video, fades in on hover */
         #video-btn-toolbar {
@@ -239,6 +229,7 @@
             justify-content: space-between;
             gap: 1%;
             margin-bottom: 1em;
+            align-items: stretch; /* ensure columns match height */
         }
 
         .video-column {
@@ -253,6 +244,7 @@
             flex-direction: column;
             justify-content:space-around;
             gap: 0.5em;
+            align-self: stretch;
         }
         .control-column button {
             width: 100%;
@@ -311,7 +303,16 @@
         #ctl-now-line { position:absolute; top:0; bottom:0; width:2px; background:rgba(220,40,40,0.75); pointer-events:none; display:none; }
         #ctl-playhead  { position:absolute; top:0; bottom:0; width:2px; background:rgba(30,120,255,0.85); pointer-events:none; display:none; }
         #ctl-tooltip { position:fixed; background:rgba(20,20,20,0.93); color:#fff; padding:6px 10px; border-radius:5px; font-size:11px; line-height:1.5; pointer-events:none; display:none; z-index:9999; max-width:280px; white-space:pre-wrap; box-shadow:0 2px 8px rgba(0,0,0,0.4); }
-	</style>
+        /* Camera status fixed box and smaller text */
+        #camera-status-panel { font-size: 0.7em; }
+        #camera-status-list { max-height: 32vh; min-height: 80px; overflow-y: auto; padding: 8px; border: 1px solid #e0e0e0; border-radius:6px; background: #fff; }
+        #camera-status-list div { font-size: 0.95em; line-height: 1.25; }
+        #camera-status-list .stale { opacity: 0.65; color: #444; }
+        /* make control column buttons align to full height when possible */
+        .control-column .btn-pair { margin-top: 6px; }
+        /* make control column buttons align to full height when possible */
+        .control-column .btn-pair { margin-top: 6px; }
+    </style>
 </head>
 
 <body id='body'>
@@ -319,6 +320,15 @@
         <div class="control-column">
             <h1 id="heading">Competition videos</h1>
 	        <div id='clock' style='font-size: 1.5em'></div>
+
+            <div id="camera-status-panel" style="margin-top:0.75em;font-size:0.95em;">
+                <div id="camera-upload-alert" style="display:none;background:#ffefef;border:1px solid #e66;color:#600;padding:6px;border-radius:6px;margin-bottom:6px;">
+                    ⚠ Cameras with large upload queues: <span id="camera-alert-text"></span>
+                </div>
+                <div id="camera-status-list" style="color:#222;">
+                    Camera status: <span id="camera-status-empty" style="color:#888;font-style:italic">None connected!</span>
+                </div>
+            </div>
 	
             <div class="btn-pair">
                 <button onclick="alert('To play back video, find the time desired, and select the appropriate blocks of video footage (on touch screens, tap the start and long hold the end; on computer, click the first then hold shift to click the end). Then click the Load and Play button.\nTo download/save part of a video, click the Record button at the top right during playback.')"><svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px" fill="#1f1f1f"><path d="M480-240q20 0 34-14t14-34q0-20-14-34t-34-14q-20 0-34 14t-14 34q0 20 14 34t34 14Zm-36-153h73q0-37 6.5-52.5T555-485q35-34 48.5-58t13.5-53q0-55-37.5-89.5T484-720q-51 0-88.5 27T343-620l65 27q9-28 28.5-43.5T482-652q28 0 46 16t18 42q0 23-15.5 41T496-518q-35 32-43.5 52.5T444-393Zm36 297q-79 0-149-30t-122.5-82.5Q156-261 126-331T96-480q0-80 30-149.5t82.5-122Q261-804 331-834t149-30q80 0 149.5 30t122 82.5Q804-699 834-629.5T864-480q0 79-30 149t-82.5 122.5Q699-156 629.5-126T480-96Zm0-72q130 0 221-91t91-221q0-130-91-221t-221-91q-130 0-221 91t-91 221q0 130 91 221t221 91Zm0-312Z"/></svg>Help</button>
@@ -348,7 +358,7 @@
         </div>
         <div class="tab-panel">
             <div class="tab-bar">
-                <button class="tab-btn active" onclick="switchTab('scores')">&#x1F4CB; Recent scores</button>
+                <button title="Only shows scores issued by panels - score table changes aren't visible" class="tab-btn active" onclick="switchTab('scores')">&#x1F4CB; Recent scores</button>
                 <button class="tab-btn" onclick="switchTab('video')">&#x25B6; Video <span id='videodesc'></span></button>
                 
             </div>
@@ -390,7 +400,7 @@
                     <button onclick="seekFrame(-10*30)" title="Step backward ten seconds" style="font-size:0.75em;padding:2px 6px;background:#444;color:#fff;border:1px solid #777;border-radius:3px;cursor:pointer;">⏮</button>
                     <button onclick="seekFrame(10*30)" title="Step forward ten seconds" style="font-size:0.75em;padding:2px 6px;background:#444;color:#fff;border:1px solid #777;border-radius:3px;cursor:pointer;">⏭</button>
                     <label class="fullscreen-pref" style="color:#fff;font-size:0.8em;display:flex;align-items:center;gap:4px;cursor:pointer;">
-                        <input type="checkbox" id="fullscreen-checkbox" checked onchange="onFullscreenPrefChange()" style="cursor:pointer;"> Full screen when load new video?
+                        <input type="checkbox" id="fullscreen-checkbox" onchange="onFullscreenPrefChange()" style="cursor:pointer;"> Full screen when load new video?
                     </label>
                 </div>
             </div>
@@ -570,7 +580,8 @@
             //start fetching videos
             fetch('/videolist')
             .then(data=>data.json())
-            .then(data=> { 
+            .then(async data=> { 
+                await refreshScoresTable();
                 addVideoItemsToTimeline(data);
                 setTimeout(()=>{
                     document.getElementById('loading-overlay').style.display = 'none'
@@ -626,9 +637,9 @@
         _hideEmptyTimer = setTimeout(hideEmptyGroups, 250);
     }
     function toggleZoomToNow() {
-        _zoomToNowActive = !_zoomToNowActive;
         const btn = document.getElementById('zoom-now-btn');
-        if (_zoomToNowActive) {
+        if (!_zoomToNowActive) {
+            _zoomToNowActive = true;
             btn.style.background = '#2a7ae2';
             btn.style.color = '#fff';
             btn.style.borderColor = '#1a5abf';
@@ -1878,7 +1889,7 @@
     }
     // Populate table from the eventlist API (called by refreshVideos already)
     function refreshScoresTable() {
-        fetch('/scorelist')
+        return fetch('/scorelist')
             .then(r => r.json())
             .then(data => {
                 recentScores=data
@@ -1890,6 +1901,152 @@
     document.getElementById('score-table').addEventListener('click', function() {
         clearScoreHighlights();
     });
+
+    // Camera status rendering and alerting
+    const CAMERA_QUEUE_ALERT_MB = 200;
+    const CAMERA_LOW_BATTERY_PCT = 5;
+    const CAMERA_STATUS_STALE_MS = 30 * 1000;
+    const CAMERA_STATUS_EXPIRE_MS = 60 * 1000;
+    let cameraAlertActive = false;
+    let cameraAlertTimer = null;
+    let cameraAlertAudioCtx = null;
+    let cameraAlertType = null; // 'queue' or 'battery'
+
+    function playCameraQueueAlert() {
+        try {
+            if (!cameraAlertAudioCtx) cameraAlertAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const ctx = cameraAlertAudioCtx;
+            [0, 0.5].forEach(offset => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(880 - offset * 80, ctx.currentTime + offset);
+                gain.gain.setValueAtTime(0.5, ctx.currentTime + offset);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + 0.2);
+                osc.start(ctx.currentTime + offset);
+                osc.stop(ctx.currentTime + offset + 0.25);
+            });
+        } catch(e) {
+            console.warn('Camera queue alert audio failed', e);
+        }
+        if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 300]);
+    }
+
+    function playCameraBatteryAlert() {
+        try {
+            if (!cameraAlertAudioCtx) cameraAlertAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const ctx = cameraAlertAudioCtx;
+            [0, 0.35, 0.7].forEach((offset, i) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(660 - i * 110, ctx.currentTime + offset);
+                gain.gain.setValueAtTime(0.4, ctx.currentTime + offset);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + 0.3);
+                osc.start(ctx.currentTime + offset);
+                osc.stop(ctx.currentTime + offset + 0.35);
+            });
+        } catch(e) {
+            console.warn('Camera battery alert audio failed', e);
+        }
+        if (navigator.vibrate) navigator.vibrate([400, 100, 400, 100, 400]);
+    }
+
+    function playCurrentCameraAlert() {
+        if (cameraAlertType === 'battery') {
+            playCameraBatteryAlert();
+        } else {
+            playCameraQueueAlert();
+        }
+    }
+
+    function startCameraAlert(type) {
+        if (cameraAlertActive && cameraAlertType === type) return;
+        cameraAlertType = type;
+        cameraAlertActive = true;
+        playCurrentCameraAlert();
+        if (cameraAlertTimer) clearInterval(cameraAlertTimer);
+        cameraAlertTimer = setInterval(playCurrentCameraAlert, 15000);
+    }
+
+    function stopCameraAlert() {
+        cameraAlertActive = false;
+        cameraAlertType = null;
+        if (cameraAlertTimer) {
+            clearInterval(cameraAlertTimer);
+            cameraAlertTimer = null;
+        }
+    }
+
+    function renderCameraStatus() {
+        const panel = document.getElementById('camera-status-list');
+        const alertEl = document.getElementById('camera-upload-alert');
+        const alertText = document.getElementById('camera-alert-text');
+        const data = window._cameraStatus || {};
+        const now = Date.now();
+
+        const cams = Object.keys(data).sort().map(key => {
+            const s = data[key];
+            const age = now - (s.serverTime || 0);
+            return { key, status: s, age, stale: age >= CAMERA_STATUS_STALE_MS };
+        }).filter(item => {
+            const keep = item.age < CAMERA_STATUS_EXPIRE_MS;
+            if (!keep) {
+                delete data[item.key];
+            }
+            return keep;
+        });
+
+        if (cams.length === 0) {
+            panel.innerHTML = 'Camera status: <span id="camera-status-empty" style="color:#888;font-style:italic">no data</span>';
+            alertEl.style.display = 'none';
+            stopCameraAlert();
+            return;
+        }
+
+        const rows = cams.map(({ key, status, age, stale }) => {
+            const description = status.camera || status.description || '';
+            const queuedMB = Math.round((status.queuedBytes||0)/1024/1024);
+            let batteryText = '—';
+            if (status.battery && status.battery.level != null) {
+                const pct = Math.round(status.battery.level * 100) + '%';
+                const symbol = status.battery.charging ? '⚡' : '🔋';
+                batteryText = `${symbol} ${pct}`;
+            }
+            const ageText = stale ? ` <span style="color:#999;font-size:90%;">(${Math.round(age/1000)}s ago)</span>` : '';
+            const descText = description ? ` — ${description}` : '';
+            const rowClass = stale ? 'stale' : '';
+            return `<div class="${rowClass}" style="margin-bottom:4px"><strong>${key}</strong>${descText} (${batteryText}) · ${queuedMB} MB waiting${ageText}</div>`;
+        });
+        panel.innerHTML = rows.join('');
+
+        const activeCams = cams.filter(item => !item.stale);
+        const badQueues = activeCams.filter(({ status }) => Math.round((status.queuedBytes||0)/1024/1024) > CAMERA_QUEUE_ALERT_MB).map(item => item.key);
+        const lowBatteries = activeCams.filter(({ status }) => {
+            const s = status;
+            return s.battery && s.battery.level != null && s.battery.level <= (CAMERA_LOW_BATTERY_PCT / 100) && !s.battery.charging;
+        }).map(item => item.key);
+
+        if (badQueues.length || lowBatteries.length) {
+            const parts = [];
+            if (badQueues.length) parts.push(`upload queue > ${CAMERA_QUEUE_ALERT_MB}MB: ${badQueues.join(', ')}`);
+            if (lowBatteries.length) parts.push(`battery low: ${lowBatteries.join(', ')}`);
+            alertText.innerText = parts.join(' ; ');
+            alertEl.style.display = 'block';
+            if (lowBatteries.length) {
+                startCameraAlert('battery');
+            } else {
+                startCameraAlert('queue');
+            }
+        } else {
+            alertEl.style.display = 'none';
+            stopCameraAlert();
+        }
+    }
 
     // ── WebSocket – live event updates ────────────────────────────────────────
     //
@@ -1920,6 +2077,21 @@
             try { msg = JSON.parse(event.data); } catch(e) { return; }
             if (msg.status=='newVideo' || msg.type === 'newVideo' || msg.file) {
                 addVideoItemsToTimeline([msg.file]);
+            }
+            // Camera status messages (battery, queued upload bytes)
+            if (msg.type === 'camera_status') {
+                try {
+                    if (!window._cameraStatus) window._cameraStatus = {};
+                    const key = msg.server || msg.camera || 'unknown';
+                    window._cameraStatus[key] = {
+                        camera: msg.camera || null,
+                        description: msg.description || null,
+                        battery: msg.battery || null,
+                        queuedBytes: msg.queuedBytes || 0,
+                        serverTime: msg.serverTime || Date.now()
+                    };
+                    renderCameraStatus();
+                } catch(e) { console.warn('camera_status handling', e); }
             }
             if (msg.time_score) {
                 // Append to live scores table

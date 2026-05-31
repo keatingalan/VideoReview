@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"log"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -162,6 +163,21 @@ func (c *client) readPump() {
 				case c.send <- ack:
 				default:
 				}
+			}
+
+			// Camera pages send periodic status updates (type: "camera_status").
+			// Broadcast those messages to all connected overview/viewer clients
+			// so the UI can display battery and queued-upload info.
+			if msgType == "camera_status" {
+				if _, ok := msg["server"]; !ok {
+					if host, _, err := net.SplitHostPort(c.conn.RemoteAddr().String()); err == nil {
+						msg["server"] = host
+					} else {
+						msg["server"] = c.conn.RemoteAddr().String()
+					}
+				}
+				msg["serverTime"] = time.Now().UnixMilli()
+				hub.broadcast(msg)
 			}
 		}
 	}

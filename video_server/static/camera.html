@@ -43,6 +43,7 @@
 		h1#heading {text-align: left; margin-top:8px; margin-bottom: 8px;}
 		div#progress {position: fixed; bottom:2px; left:5vw; height: 3em; overflow-y: auto; vertical-align: middle; padding-top:2px;}
 		div#uploadZip {position: fixed; bottom:0px; right:5vw; height: 3em; overflow-y: auto;}
+		button#downloadchunksbutton {position: fixed; bottom:0px; left:40vw; height: 2em; overflow-y: auto;}
 		div#uploadZip input {max-width: 30vw; max-height:2em;}
 		@keyframes flash-animation {
 			0% { background-color: yellow; }
@@ -148,6 +149,59 @@
 			0%   { box-shadow: 0 0 40px rgba(0,0,0,0.7), 0 0 0 6px #c47a00; }
 			100% { box-shadow: 0 0 40px rgba(0,0,0,0.7), 0 0 0 18px rgba(196,122,0,0.2); }
 		}
+
+		/* Video overlays: IP, continuous description, and triggered apparatus */
+		#videoContainer { position: relative; }
+		.video-overlay { position: absolute; z-index: 9999; background: rgba(0,0,0,0.45); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 0.95em; pointer-events: none; }
+		#overlayIP { bottom: 12px; left: 8px; font-size: 0.9em; }
+		#overlayContinuous { bottom: 42px; left: 8px; }
+		#overlayTriggered { bottom: 72px; left: 8px; }
+
+		/* Responsive design for small screens */
+		@media (max-width: 1024px) {
+			button#startStop, button#startStopTriggered {
+				width: 12em;
+				font-size: 110%;
+				height: 1.5em;
+			}
+			div#clock {
+				font-size: 75%;
+				width: 5em;
+			}
+		}
+
+		@media (max-width: 768px) {
+			div#headerrow {
+				flex-wrap: wrap;
+				gap: 0.5em;
+			}
+			button#startStop, button#startStopTriggered {
+				width: 8em;
+				font-size: 100%;
+				height: 1.4em;
+				flex: 1;
+				min-width: 7em;
+			}
+			h1#heading {
+				flex-basis: 100%;
+				margin: 4px 0;
+			}
+			div#clock {
+				font-size: 70%;
+				width: 4em;
+			}
+		}
+
+		@media (max-width: 480px) {
+			button#startStop, button#startStopTriggered {
+				width: 100%;
+				font-size: 90%;
+				height: 1.3em;
+			}
+			div#clock {
+				display: none;
+			}
+		}
 	</style>
 	<script src="EBML.js"></script>
 	<script src="jszip.js"></script>
@@ -170,14 +224,9 @@
 				<select id='audiolist'><option value='none'>No Audio</option></select>
 			</div>
 			<div>
-				<label for="description">Continuous Recording Camera Name</label>
-				<input id="description" type="text" value="" placeholder="A unique description of this camera's subject" />
-				<label for="dontrecord">Do not record if gymnast name includes: <span title='If gymnast name includes this text/character, continuous recording will pause and triggered recording will not start when the gymnast is selected on the selected apparatus and server.'>&#9432;</span></label>
-				<input id="dontrecord" type="text" value="#" />
-			</div>
-			<div>
 				<label for="apparatus">Apparatus <span title='Filters messages for triggered recording and for pausing continuous recording because of gymnast without photo permission.'>&#9432;</span></label>
 				<select id='apparatus'>
+					<option value="">Select Apparatus</option>
 					<option value='Vault'>Vault</option>
 					<option value='Bars'>Bars</option>
 					<option value='Beam'>Beam</option>
@@ -186,9 +235,18 @@
 				<label for="ScoreGenServer">ScoreGen Server <span title="If blank will take any messages. To filter to only one Scoregen server, type it's IP address here (e.g. 192.168.100.138).">&#9432;</span></label>
 				<input id='ScoreGenServer' type='text' value="" placeholder="IP address, or blank for any" />
 			</div>
+			<div>
+				<label for="description">Continuous Recording Camera Name</label>
+				<input id="description" type="text" value="" placeholder="A unique description of this camera's subject" />
+				<label for="dontrecord">Do not record if gymnast name includes: <span title='If gymnast name includes this text/character, continuous recording will pause and triggered recording will not start when the gymnast is selected on the selected apparatus and server.'>&#9432;</span></label>
+				<input id="dontrecord" type="text" value="#" />
+			</div>
 		</div>
 		
 		<video id='videoPlayer' autoplay='true' playsinline muted="true"></video>
+		<div id="overlayIP" class="video-overlay">IP: ...</div>
+		<div id="overlayContinuous" class="video-overlay" style="display:none">Desc: ...</div>
+		<div id="overlayTriggered" class="video-overlay" style="display:none">Trigger Apparatus: ...</div>
 	</div>
 	<!-- Upload failure alert overlay -->
 	<div id="uploadAlertBanner">
@@ -208,6 +266,7 @@
 		<progress id="uploadProgress" max="100" value="0"></progress>
 		<label for="uploadProgress" id="uploadProgressLabel">Upload remaining</label>
 	</div>
+	
 	<button onclick="if(document.getElementById('setupFields').hidden) {document.getElementById('setupFields').hidden=false} else {document.getElementById('setupFields').hidden=true}" style="position: fixed; bottom:2px; right:5vw; z-index: 100;">&#9881;</button>
 	<div id="uploadZip">
 		<label style="font-size: 80%;">Load zip file of videos that failed to upload 
@@ -215,6 +274,8 @@
 			<input id='zipfile' type='file' />
 		</label>
 	</div>
+	<button id='downloadchunksbutton' onclick='downloadRemainingChunksAsZip()' style="font-size:60%; height:min-content;">Download data for later upload</button></small>
+		
 
 </body>
 <script>
@@ -377,6 +438,32 @@ var triggeredRecorders = [
 const TRIGGERED_MAX_DURATION = 10 * 60 * 1000; // 10 minutes
 
 setInterval(updateScreen,500);
+
+// Prevent accidental page reload/refresh that would lose data
+window.addEventListener('beforeunload', (event) => {
+	// Check for data that would be lost
+	const pendingUploads = chunksToUpload && chunksToUpload.length > 0;
+	const isRecording = exportRecorder?.state === 'recording' || 
+	                   exportRecorder2?.state === 'recording' ||
+	                   triggeredRecorders.some(r => r.recorder?.state === 'recording');
+	const continuousRecordingActive = continuousRecordingEnabled;
+	
+	if (pendingUploads || isRecording || continuousRecordingActive) {
+		const queueMB = chunksToUpload 
+			? Math.round(chunksToUpload.reduce((n, {size}) => n + size, 0) / 1024 / 1024)
+			: 0;
+		let warningParts = [];
+		if (isRecording) warningParts.push('an active recording');
+		if (continuousRecordingActive) warningParts.push('continuous recording enabled');
+		if (pendingUploads) warningParts.push(`${queueMB} MB of video queued for upload`);
+		
+		const message = 'You have ' + warningParts.join(', ') + '. Reloading will lose this data.';
+		event.preventDefault();
+		event.returnValue = message;
+		return message;
+	}
+});
+
 function updateScreen() {
 	time=new Date()
 	document.getElementById("clock").innerHTML=time.toTimeString().substr(0,8)
@@ -387,7 +474,11 @@ function updateScreen() {
 		} else {
 			try {document.getElementById('body').classList.remove('recording')} catch(e) {}
 			if(continuousRecordingEnabled) {
-				document.getElementById('heading').innerHTML="Paused"
+				if (continuousRecordingPausedByQueue) {
+					document.getElementById('heading').innerHTML="Paused (upload queue > 1GB)"
+				} else {
+					document.getElementById('heading').innerHTML="Paused"
+				}
 			} else {
 				document.getElementById('heading').innerHTML="Ready"
 			}
@@ -408,33 +499,98 @@ var recorder1start
 var recorder2start
 var filename_prefix="video"
 var continuousRecordingEnabled=false
+var continuousRecordingPausedByQueue=false
+var uploadPauseOverride=false
+const UPLOAD_QUEUE_PAUSE_BYTES = 1024 * 1024 * 1024 // 1 GB
+
+function getUploadQueueBytes() {
+    return chunksToUpload.reduce((n, {size}) => n + size, 0)
+}
+
+function pauseContinuousRecordingForQueue() {
+    if (!continuousRecordingEnabled || continuousRecordingPausedByQueue) return
+    console.warn('Pausing continuous recording because upload queue exceeds 1GB')
+    try {
+        if (exportRecorder.state == 'recording') exportRecorder.stop()
+        if (exportRecorder2.state == 'recording') exportRecorder2.stop()
+    } catch (e) { console.error('Could not pause recording', e) }
+    continuousRecordingPausedByQueue = true
+    document.getElementById('heading').innerHTML = 'Paused (upload queue > 1GB)'
+    document.getElementById('startStop').innerHTML = 'Resume Continuous Recording'
+    document.getElementById('setupFields').hidden = false
+}
+
+function resumeContinuousRecording(override) {
+    uploadPauseOverride = !!override
+    continuousRecordingPausedByQueue = false
+    continuousRecordingEnabled = true
+    if (exportRecorder.state !== 'recording' && exportRecorder2.state !== 'recording') {
+        try {
+            exportRecorder.start()
+        } catch (e) {
+            console.error('Could not resume continuous recording', e)
+        }
+    }
+    document.getElementById('heading').innerHTML = 'Recording'
+    document.getElementById('startStop').innerHTML = '&#9632; Stop Continuous Recording'
+    try { document.getElementById('body').classList.add('recording') } catch (e) {}
+    document.getElementById('setupFields').hidden = true
+}
+
+function stopContinuousRecording() {
+    window.clearInterval(timer)
+    try {
+        if (exportRecorder.state == 'recording') exportRecorder.stop()
+        if (exportRecorder2.state == 'recording') exportRecorder2.stop()
+    } catch (e) { console.error('Could not stop recording', e) }
+    continuousRecordingEnabled = false
+    continuousRecordingPausedByQueue = false
+    uploadPauseOverride = false
+    document.getElementById('startStop').innerHTML = '&#9679; Start Continuous Recording'
+    document.getElementById('heading').innerHTML = 'Ready'
+    try { document.getElementById('body').classList.remove('recording') } catch (e) {}
+    document.getElementById('setupFields').hidden = false
+	// hide overlays related to continuous recording
+	hideContinuousOverlay();
+}
+
+function checkUploadQueuePause() {
+    const queueBytes = getUploadQueueBytes()
+    if (queueBytes >= UPLOAD_QUEUE_PAUSE_BYTES && continuousRecordingEnabled && !uploadPauseOverride) {
+        pauseContinuousRecordingForQueue()
+    } else if (queueBytes < UPLOAD_QUEUE_PAUSE_BYTES && continuousRecordingPausedByQueue && !uploadPauseOverride) {
+        resumeContinuousRecording(false)
+    }
+}
+
 function startStopRecorder() {
-	if(exportRecorder.state=='recording'||exportRecorder2.state=='recording'||continuousRecordingEnabled) {
-		window.clearInterval(timer)
-		exportRecorder.stop()
-		exportRecorder2.stop()
-		continuousRecordingEnabled=false
-		document.getElementById('startStop').innerHTML="&#9679; Start Continuous Recording"
-		document.getElementById('heading').innerHTML="Ready"
-		try {document.getElementById('body').classList.remove('recording')} catch(e) {}
-		document.getElementById('setupFields').hidden=false
-	} else {
-		if(document.getElementById('description').value=='') {alert('No description entered - must be unique at this time');return;}
-		exportRecorder.addEventListener('start', (e)=>{recorder1start=e.timeStamp})
-		exportRecorder2.addEventListener('start', (e)=>{recorder2start=e.timeStamp})
-		filename_prefix=document.getElementById('description').value.replace("!","")+"!"//+Date.now()//+"+"+recordingLength+"x"
-		numFiles=0
-		continuousRecordingEnabled=true
-		exportRecorder.start()//recordingLength) //Make it in short chunks
-		timer=window.setInterval(swapRecorders,recordingLength)
-		//window.setTimeout(swapRecorders,2000) //Make 2s chunk first to test before walking away
-		document.getElementById('startStop').innerHTML="&#9632; Stop Continuous Recording"
-		document.getElementById('heading').innerHTML="Recording"// "+filename_prefix
-		exportRecorder.addEventListener('dataavailable', (e)=>{downloadExportRecording(e.data,e.timeStamp-recorder1start)})
-		exportRecorder2.addEventListener('dataavailable', (e)=>{downloadExportRecording(e.data,e.timeStamp-recorder2start)})
-		document.getElementById('body').classList.add('recording')	
-		document.getElementById('setupFields').hidden=true
-	}
+    const currentlyRecording = exportRecorder.state=='recording' || exportRecorder2.state=='recording'
+    if (continuousRecordingPausedByQueue && !currentlyRecording) {
+        // User intervenes: resume recording even though queue remains high.
+        resumeContinuousRecording(true)
+        return
+    }
+    if (currentlyRecording || continuousRecordingEnabled) {
+        stopContinuousRecording()
+        return
+    }
+    if (document.getElementById('description').value=='') { alert('No description entered - must be unique at this time'); return; }
+    exportRecorder.addEventListener('start', (e)=>{recorder1start=e.timeStamp})
+    exportRecorder2.addEventListener('start', (e)=>{recorder2start=e.timeStamp})
+    filename_prefix=document.getElementById('description').value.replace("!","")+"!"
+    numFiles=0
+    continuousRecordingEnabled=true
+    exportRecorder.start()
+    timer=window.setInterval(swapRecorders,recordingLength)
+    document.getElementById('startStop').innerHTML="&#9632; Stop Continuous Recording"
+    document.getElementById('heading').innerHTML="Recording"
+    exportRecorder.addEventListener('dataavailable', (e)=>{downloadExportRecording(e.data,e.timeStamp-recorder1start)})
+    exportRecorder2.addEventListener('dataavailable', (e)=>{downloadExportRecording(e.data,e.timeStamp-recorder2start)})
+    document.getElementById('body').classList.add('recording')
+    document.getElementById('setupFields').hidden=true
+	// show continuous description overlay and ensure IP is displayed
+	showContinuousOverlay();
+	updateIPOverlay();
 }
 function swapRecorders() {
     if (exportRecorder.state === 'recording') {
@@ -463,6 +619,8 @@ function startTriggeredRecorder(slot, msg) {
         stopTriggeredRecorder(slot);
     }, TRIGGERED_MAX_DURATION);
     console.info("Started triggered recording (slot "+slot+") for "+msg.name+" on "+msg.apparatus+" from "+msg.server, msg);
+	// show triggered overlay (apparatus and competitor) and ensure IP displayed
+	updateIPOverlay();
 }
 
 function stopTriggeredRecorder(slot) {
@@ -470,6 +628,8 @@ function stopTriggeredRecorder(slot) {
     triggeredRecorders[slot].safetyTimeout = null;
     triggeredRecorders[slot].serverIP = null;
     try { triggeredRecorders[slot].recorder.stop(); } catch(e) {}
+	// hide triggered overlay if no triggered slots are active
+	setTimeout(hideTriggeredOverlayIfIdle, 50);
 }
 
 var triggeredRecorderEnabled=false
@@ -480,12 +640,14 @@ function startStopTriggeredRecorder() {
 		triggeredRecorderEnabled=false
 		document.getElementById('startStopTriggered').innerHTML="&#9679; Start Triggered Recording"
 		document.getElementById('setupFields').hidden=false
+		hideTriggeredOverlay()
 	} else {
-		//if(document.getElementById('description').value=='') {alert('No description entered - must be unique at this time');return;}
+		if(document.getElementById('apparatus').value=='') {alert('No apparatus selected.');return;}
 		numFiles=0
 		triggeredRecorderEnabled=true
 		document.getElementById('startStopTriggered').innerHTML="&#9632; Stop Triggered Recording"
 		document.getElementById('setupFields').hidden=true
+		showTriggeredOverlay()
 	}
 }
 
@@ -633,6 +795,7 @@ const updateUploadStatus=()=>{
 		document.getElementById('uploadProgress').value=100-100*chunksToUpload.reduce((n, {size}) => n + size, 0)/uploadSizeTotal
 		document.getElementById('uploadProgressLabel').innerText="Upload progress: "+Math.round((chunksToUpload.reduce((n, {size}) => n + size, 0))/1024/1024)+"MB remaining of "+Math.round(uploadSizeTotal/1024/1024)+"MB"
 	}
+	checkUploadQueuePause()
 }
 async function getSeekableBlobAsync(blob) {
 	const arrayBuffer = await blob.arrayBuffer();
@@ -700,6 +863,9 @@ let lastSuccessfulUploadTime = null; // updated each time a chunk succeeds
 // Track the size uploaded so we can detect stalls (no reduction for >5 min)
 let lastQueueSizeAtCheck    = null;
 let lastQueueSizeChangeTime = null;
+
+// Latest battery information (populated by Battery API handler)
+var latestBattery = null;
 
 function shouldAlert() {
     const queueBytes = chunksToUpload.reduce((n, {size}) => n + size, 0)
@@ -845,6 +1011,8 @@ setInterval(() => {
 
     function handleBatteryUpdate(battery) {
         const isLow = battery.level <= (BATTERY_LOW_THRESHOLD / 100) && !battery.charging;
+		// track latest battery info for status reporting
+		latestBattery = { level: battery.level, charging: battery.charging };
         if (isLow) {
             if (!batteryAlertDismissed) showBatteryAlert(battery.level);
             startBatteryAlarm();
@@ -938,7 +1106,7 @@ document.getElementById('zipfile').onchange=(e)=>{
                     }
                 }
             }
-            if(continuousRecordingEnabled) {
+            if (continuousRecordingEnabled && !continuousRecordingPausedByQueue) {
                 //Stop continuous recording if gymnast name includes the text in "dontrecord" field
                 if(msg.status=="competing" 
                             && document.getElementById('dontrecord').value 
@@ -981,18 +1149,40 @@ document.getElementById('zipfile').onchange=(e)=>{
             clearTimeout(pongTimeout);
         }
 
-        function connect() {
-            ws = new WebSocket((window.location.protocol=="https:"?'wss://':'ws://') + location.host + '/ws');
+		let statusTimer = null;
 
-            ws.addEventListener('open', () => {
-                console.log('WebSocket connected');
-                reconnectDelay = 500; // reset backoff on successful connect
-                startPing();
-                // Replay any messages that weren't acked before the last disconnect
-                pendingMsgs.forEach(({data}) => {
-                    try { ws.send(data); } catch(e) {}
-                });
-            });
+		function sendStatusIfReady() {
+			try {
+				const queuedBytes = chunksToUpload.reduce((n, {size}) => n + size, 0);
+				const cameraDesc = (document.getElementById('description') && document.getElementById('description').value) || document.getElementById('cameralist').value || null;
+				const payload = {
+					type: 'camera_status',
+					camera: cameraDesc,
+					battery: latestBattery || null,
+					queuedBytes: queuedBytes
+				};
+				if (ws && ws.readyState === WebSocket.OPEN) {
+					try { ws.send(JSON.stringify(payload)); } catch(e) {}
+				}
+			} catch(e) { console.warn('sendStatusIfReady', e); }
+		}
+
+		function connect() {
+			ws = new WebSocket((window.location.protocol=="https:"?'wss://':'ws://') + location.host + '/ws');
+
+			ws.addEventListener('open', () => {
+				console.log('WebSocket connected');
+				reconnectDelay = 500; // reset backoff on successful connect
+				startPing();
+				// Replay any messages that weren't acked before the last disconnect
+				pendingMsgs.forEach(({data}) => {
+					try { ws.send(data); } catch(e) {}
+				});
+				// start periodic camera status reports (every 15s)
+				if (statusTimer) clearInterval(statusTimer);
+				statusTimer = setInterval(sendStatusIfReady, 15000);
+				sendStatusIfReady();
+			});
 
             ws.addEventListener('message', (event) => {
                 let msg;
@@ -1014,12 +1204,13 @@ document.getElementById('zipfile').onchange=(e)=>{
                 processMsg(msg);
             });
 
-            ws.addEventListener('close', () => {
-                stopPing();
-                console.log(`WebSocket closed – reconnecting in ${reconnectDelay} ms`);
-                setTimeout(connect, reconnectDelay);
-                reconnectDelay = Math.min(reconnectDelay * 2, maxDelay);
-            });
+			ws.addEventListener('close', () => {
+				stopPing();
+				console.log(`WebSocket closed – reconnecting in ${reconnectDelay} ms`);
+				if (statusTimer) { clearInterval(statusTimer); statusTimer = null; }
+				setTimeout(connect, reconnectDelay);
+				reconnectDelay = Math.min(reconnectDelay * 2, maxDelay);
+			});
 
             ws.addEventListener('error', (e) => {
                 console.warn('WebSocket error', e);
@@ -1027,8 +1218,66 @@ document.getElementById('zipfile').onchange=(e)=>{
             });
         }
 
-        connect();
+		connect();
+		// Populate IP overlay on load
+		try { updateIPOverlay(); } catch(e) {}
     })();
+	// Overlays: show camera IP and recording descriptions
+	function updateIPOverlay() {
+		// Get the client device's local IP using WebRTC ICE candidates
+		const pc = new RTCPeerConnection({ iceServers: [] });
+		let found = false;
+		
+		pc.createDataChannel('');
+		pc.createOffer().then(offer => pc.setLocalDescription(offer)).catch(() => {});
+		
+		pc.onicecandidate = (ice) => {
+			if (!ice || !ice.candidate || found) return;
+			const ipRegex = /([0-9]{1,3}(\.[0-9]{1,3}){3})/;
+			const match = ipRegex.exec(ice.candidate.candidate);
+			if (match) {
+				const ip = match[0];
+				// Filter out loopback and other non-routable IPs
+				if (!ip.startsWith('127.') && !ip.startsWith('0.')) {
+					found = true;
+					document.getElementById('overlayIP').innerText = 'IP: ' + ip;
+					pc.close();
+				}
+			}
+		};
+		
+		// Fallback timeout
+		setTimeout(() => {
+			if (!found) {
+				document.getElementById('overlayIP').innerText = 'IP: N/A';
+				pc.close();
+			}
+		}, 2000);
+	}
+
+	function showContinuousOverlay() {
+		const desc = (document.getElementById('description') && document.getElementById('description').value) || '';
+		if (!desc) return;
+		const el = document.getElementById('overlayContinuous');
+		el.innerText = 'Desc: ' + desc;
+		el.style.display = 'block';
+	}
+
+	function hideContinuousOverlay() {
+		document.getElementById('overlayContinuous').style.display = 'none';
+	}
+
+	function showTriggeredOverlay(text) {
+		const desc = (document.getElementById('apparatus') && document.getElementById('apparatus').value) ;
+		if (!desc) return;
+		const el = document.getElementById('overlayTriggered');
+		el.innerText = 'Triggered: ' + desc;
+		el.style.display = 'block';
+	}
+
+	function hideTriggeredOverlay() {
+		document.getElementById('overlayTriggered').style.display = 'none';
+	}
 
 </script>
 </html>
