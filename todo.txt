@@ -1,0 +1,6 @@
+Buy sandbags for tripods?
+Tooltip for recent scores table to explain source
+
+add camera IP to screen for fault finding
+Send battery low alarms to overiew page? Fix sometimes websocket messages for videos don't show in score table
+Keep video #888 floor D score

@@ -239,7 +239,7 @@
 				<label for="description">Continuous Recording Camera Name</label>
 				<input id="description" type="text" value="" placeholder="A unique description of this camera's subject" />
 				<label for="dontrecord">Do not record if gymnast name includes: <span title='If gymnast name includes this text/character, continuous recording will pause and triggered recording will not start when the gymnast is selected on the selected apparatus and server.'>&#9432;</span></label>
-				<input id="dontrecord" type="text" value="#" />
+				<input id="dontrecord" type="text" value="." />
 			</div>
 		</div>
 		
@@ -715,12 +715,67 @@ function uploadByChunking(file,filename) {
 chunkUploadStatus=0 //0 = stopped, number = number of attempts at this chunk
 uploadStartTime=null
 uploadSizeTotal=0
+
+const FETCH_TIMEOUT_MS     = 30000;  // abort a hung fetch after 30s
+const MAX_RETRY_DELAY_MS   = 60000;  // cap backoff at 60s between retries
+
+// Upload attempt log. Each entry records one chunk fetch and its outcome.
+// Call getUploadLog() in the browser console to inspect, or downloadUploadLog() to save as JSON.
+var uploadLog = [];
+var chunkFetchStartTime = null; // stamped just before each fetch to measure round-trip time
+
+function logUploadEvent(outcome, detail) {
+	detail = detail || '';
+	var now = Date.now();
+	var durationMs = chunkFetchStartTime != null ? (now - chunkFetchStartTime) : null;
+	var chunk = chunksToUpload[0];
+	var entry = {
+		time:       new Date(now).toISOString(),
+		file:       chunk ? chunk.filename : '-',
+		chunk:      chunk ? (chunk.chunkNo + 1) + '/' + chunk.numChunks : '-',
+		attempt:    chunkUploadStatus,
+		outcome:    outcome,   // 'success' | 'http-NNN' | 'timeout' | 'network-error'
+		detail:     detail,
+		durationMs: durationMs,
+	};
+	uploadLog.push(entry);
+	var dStr = durationMs != null ? durationMs + 'ms' : 'n/a';
+	var msg = '[upload] ' + entry.time + ' | ' + entry.file + ' chunk ' + entry.chunk +
+	          ' | attempt ' + entry.attempt + ' | ' + outcome +
+	          (detail ? ' - ' + detail : '') + ' | ' + dStr;
+	if (outcome === 'success') { console.log(msg); } else { console.warn(msg); }
+}
+
+// Returns the full log array for inspection in the console.
+function getUploadLog() { return uploadLog; }
+
+// Downloads the log as a JSON file for offline analysis.
+function downloadUploadLog() {
+	var blob = new Blob([JSON.stringify(uploadLog, null, 2)], {type: 'application/json'});
+	var a = document.createElement('a');
+	a.href = URL.createObjectURL(blob);
+	a.download = 'upload-log-' + new Date().toISOString().replace(/[:.]/g,'-') + '.json';
+	a.click();
+}
+
+function scheduleRetry(reason) {
+	// Exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, 60s, 60s, ...
+	const delay = Math.min(1000 * Math.pow(2, chunkUploadStatus - 1), MAX_RETRY_DELAY_MS);
+	const delaySec = Math.round(delay / 1000);
+	console.warn(`Upload retry ${chunkUploadStatus} in ${delaySec}s — ${reason}`);
+	const label = document.getElementById('uploadProgressLabel');
+	label.classList.add('flashing');
+	label.innerHTML = `Retrying upload… attempt ${chunkUploadStatus}, waiting ${delaySec}s &nbsp; <button onclick='downloadRemainingChunksAsZip()'>Download data for later upload</button>`;
+	window.setTimeout(uploadAChunk, delay);
+}
+
 function uploadAChunk() {
 	document.getElementById('uploadProgressLabel').classList.remove('flashing')
 	if(chunksToUpload.length>0) {
-		if( uploadStartTime==null) uploadStartTime=Date.now()
+		if(uploadStartTime==null) uploadStartTime=Date.now()
 		updateUploadStatus()
 		chunkUploadStatus=chunkUploadStatus+1 //Add 1 to attempt count
+
 		// Set up the parameters for the request
 		const params = new URLSearchParams();
 		params.set('name', chunksToUpload[0].filename);
@@ -731,50 +786,47 @@ function uploadAChunk() {
 		const headers = { 'Content-Type': 'application/octet-stream' };
 		const url = '/uploadChunked?' + params.toString()
 
+		// AbortController gives fetch a hard 30s deadline.
+		// Without this, a stalled TCP connection can hang fetch indefinitely.
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
 		// Make the POST request to the server
+		chunkFetchStartTime = Date.now(); // start the clock for this attempt
 		fetch(url, {
-		method: 'POST',
-		headers: headers,
-		body: chunksToUpload[0].data
+			method: 'POST',
+			headers: headers,
+			body: chunksToUpload[0].data,
+			signal: controller.signal
 		}).then(response => {
+			clearTimeout(timeoutId);
 			if(response.status==200) {
 				//Chunk uploaded successfully, try next one
+				logUploadEvent('success');
 				chunksToUpload.shift() //Drop this from the array
-				chunkUploadStatus=0 //Mark as stopped
+				chunkUploadStatus=0 //Reset attempt counter for the next chunk
+				lastSuccessfulUploadTime = Date.now(); // used by stall detector
 				updateUploadStatus()
 				uploadAChunk()
 			} else {
-				console.log(response)
-				//Failed - try again
-				if(chunkUploadStatus<6) {
-					window.setTimeout(uploadAChunk,(10**chunkUploadStatus)/2) //Limit retries, and leave a bit longer gap each time
-				} else {
-					/*if(confirm("Uploading failed >5 attempts for one chunk. Retry?")) {
-						chunkUploadStatus=0
-						uploadAChunk() //Start again
-					} else {*/
-						document.getElementById('uploadProgressLabel').innerHTML="Uploading failed. <button onclick='uploadAChunk()'>Try again</button> or <button onclick='downloadRemainingChunksAsZip()'>Download data for later upload</button>"
-						document.getElementById('uploadProgressLabel').classList.add('flashing')
-						chunkUploadStatus=0 //Reset otherwise can never start uploading again!
-					//}
-				}
+				// Non-200 response — keep retrying indefinitely with backoff
+				logUploadEvent('http-' + response.status, 'server returned ' + response.status);
+				console.warn('Upload got HTTP ' + response.status + ', will retry');
+				scheduleRetry('HTTP ' + response.status);
 			}
-		},err=>{
-			console.error(err)
-			//Failed - try again
-			if(chunkUploadStatus<6) {
-				uploadAChunk() //Limit retries
+		}).catch(err => {
+			clearTimeout(timeoutId);
+			if (err.name === 'AbortError') {
+				// fetch timed out after FETCH_TIMEOUT_MS — treat as a retryable failure
+				console.warn('Upload fetch timed out after ' + (FETCH_TIMEOUT_MS/1000) + 's, will retry');
+				scheduleRetry('request timed out');
 			} else {
-				/*if(confirm("Uploading failed >5 attempts for one chunk. Retry?")) {
-					chunkUploadStatus=0
-					uploadAChunk() //Start again
-				} else {*/
-					document.getElementById('uploadProgressLabel').innerHTML="Uploading failed. <button onclick='uploadAChunk()'>Try again</button> or <button onclick='downloadRemainingChunksAsZip()'>Download data for later upload</button>"
-					document.getElementById('uploadProgressLabel').classList.add('flashing')
-					chunkUploadStatus=0 //Reset otherwise can never start uploading again!
-				//}
+				// Network error — keep retrying indefinitely with backoff
+				logUploadEvent('network-error', err.message || String(err));
+				console.error('Upload fetch error, will retry:', err);
+				scheduleRetry('network error');
 			}
-		})
+		});
 	} else {
 		//reset queue size for progress bar
 		uploadSizeTotal=0
