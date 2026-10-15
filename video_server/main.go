@@ -119,7 +119,21 @@ func main() {
 	//   -listen                       -> listen, accept any source IP
 	//   -listen 192.168.1.10,1.11     -> listen, accept only those IPs
 	listen := flag.Bool("listen", false, "Enable UDP listeners; optionally follow with comma-separated allowed source IPs")
+	disableDiskCleanup := flag.Bool("disable-disk-cleanup", false, "Disable automatic deletion of old continuous recordings when disk space is low")
+	minimumFreeSpace := flag.String("min-free-space", "2GiB", "Minimum free disk space before old continuous recordings are deleted (e.g. 500MB, 10GiB)")
 	flag.Parse()
+
+	parsedMinimumFreeSpace, err := parseByteSize(*minimumFreeSpace)
+	if err != nil {
+		log.Fatalf("Invalid -min-free-space value %q: %v", *minimumFreeSpace, err)
+	}
+	minimumFreeDiskSpace = parsedMinimumFreeSpace
+	diskCleanupEnabled = !*disableDiskCleanup
+	if diskCleanupEnabled {
+		log.Printf("Automatic disk cleanup enabled (minimum free space: %s)", *minimumFreeSpace)
+	} else {
+		log.Println("Automatic disk cleanup disabled")
+	}
 
 	var knownIPs map[string]struct{}
 	if *listen && len(flag.Args()) > 0 {
@@ -152,6 +166,7 @@ func main() {
 	registerShared := func(mux *http.ServeMux) {
 		mux.HandleFunc("/ws", wsHandler)
 		mux.HandleFunc("/ip", handleIP)
+		mux.HandleFunc("/diskspace", handleDiskSpace)
 		mux.HandleFunc("/events", handleEvents)
 		mux.Handle("/videolist", gzipJSONHandler(http.HandlerFunc(handleVideoList)))
 		mux.Handle("/video_list", gzipJSONHandler(http.HandlerFunc(handleVideoList)))

@@ -321,6 +321,11 @@
             <h1 id="heading">Competition videos</h1>
 	        <div id='clock' style='font-size: 1.5em'></div>
 
+            <div id="disk-space-status" role="status" aria-live="polite" style="margin-top:0.5em;padding:6px 8px;border:1px solid #ccc;border-radius:6px;background:#fff;color:#333;font-size:0.9em;">
+                Disk free space: <span id="disk-space-value">Checking…</span>
+                <span id="disk-space-updated" style="color:#777;font-size:0.85em;"></span>
+            </div>
+
             <div id="camera-status-panel" style="margin-top:0.75em;font-size:0.95em;">
                 <div id="camera-upload-alert" style="display:none;background:#ffefef;border:1px solid #e66;color:#600;padding:6px;border-radius:6px;margin-bottom:6px;">
                     ⚠ Cameras with large upload queues: <span id="camera-alert-text"></span>
@@ -439,6 +444,63 @@
 
 <script>
     setInterval(updateScreen,200);
+    updateDiskSpace();
+    setInterval(updateDiskSpace, 60000);
+
+    async function updateDiskSpace() {
+        const status = document.getElementById('disk-space-status');
+        const value = document.getElementById('disk-space-value');
+        const updated = document.getElementById('disk-space-updated');
+        try {
+            const response = await fetch('/diskspace', { cache: 'no-store' });
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            const data = await response.json();
+            value.textContent = formatDiskSpace(data.free_bytes);
+            status.style.backgroundColor = '#fff';
+            status.style.borderColor = '#ccc';
+            status.style.color = '#333';
+            status.removeAttribute('title');
+
+            if (data.minimum_free_bytes > 0 && data.free_bytes <= data.minimum_free_bytes) {
+                status.style.backgroundColor = '#f8d7da';
+                status.style.borderColor = '#dc3545';
+                status.style.color = '#721c24';
+                status.title = 'Free space is at or below the configured minimum.';
+                value.textContent += ' — LOW SPACE';
+            } else if (data.minimum_free_bytes > 0 && data.free_bytes <= data.minimum_free_bytes * 1.5) {
+                status.style.backgroundColor = '#fff3cd';
+                status.style.borderColor = '#e0a800';
+                status.style.color = '#664d03';
+                status.title = 'Free space is approaching the configured minimum.';
+                value.textContent += ' — getting low';
+            }
+            if (data.minimum_free_bytes > 0) {
+                value.textContent += ' <small>· minimum ' + formatDiskSpace(data.minimum_free_bytes) + '</small>';
+            }
+            updated.textContent = ' · updated ' + new Date().toLocaleTimeString();
+        } catch (error) {
+            status.style.backgroundColor = '#fff';
+            status.style.borderColor = '#ccc';
+            status.style.color = '#333';
+            status.removeAttribute('title');
+            value.textContent = 'Unavailable';
+            updated.textContent = '';
+            console.warn('Could not retrieve free disk space:', error);
+        }
+    }
+
+    function formatDiskSpace(bytes) {
+        if (!Number.isFinite(bytes) || bytes < 0) return 'Unknown';
+        const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
+        let value = bytes;
+        let unit = 0;
+        while (value >= 1024 && unit < units.length - 1) {
+            value /= 1024;
+            unit++;
+        }
+        return value.toFixed(unit === 0 ? 0 : 1) + ' ' + units[unit];
+    }
+
     function updateScreen() {
         const timeStr = new Date().toTimeString().substr(0,8);
         document.getElementById("clock").innerHTML = timeStr;

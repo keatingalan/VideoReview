@@ -136,6 +136,11 @@ func handleUploadChunked(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	filename := filepath.Base(r.URL.Query().Get("name"))
+	beginActiveUpload(filename)
+	defer endActiveUpload(filename)
+	if diskCleanupEnabled {
+		runDiskCleanup()
+	}
 	chunkNum := r.URL.Query().Get("currentChunkIndex") // current chunk number (0-indexed)
 	totalChunks := r.URL.Query().Get("totalChunks")    // total number of chunks
 
@@ -196,6 +201,19 @@ func handleUploadChunked(w http.ResponseWriter, r *http.Request) {
 func handleVideoServe(w http.ResponseWriter, r *http.Request) {
 	filename := strings.TrimPrefix(r.URL.Path, "/video/")
 	http.ServeFile(w, r, filepath.Join(uploadDir, filename))
+}
+
+func handleDiskSpace(w http.ResponseWriter, r *http.Request) {
+	freeBytes, err := diskFreeBytes(uploadDir)
+	if err != nil {
+		http.Error(w, "Unable to determine free disk space", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(struct {
+		FreeBytes        int64 `json:"free_bytes"`
+		MinimumFreeBytes int64 `json:"minimum_free_bytes"`
+	}{FreeBytes: freeBytes, MinimumFreeBytes: minimumFreeDiskSpace})
 }
 
 func handleEventList(w http.ResponseWriter, r *http.Request) {
