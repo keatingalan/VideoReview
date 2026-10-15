@@ -1210,6 +1210,7 @@ document.getElementById('zipfile').onchange=(e)=>{
 				const payload = {
 					type: 'camera_status',
 					camera: cameraDesc,
+					cameraTime: Date.now(),
 					battery: latestBattery || null,
 					queuedBytes: queuedBytes
 				};

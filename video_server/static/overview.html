@@ -253,6 +253,29 @@
         .control-column label button {
             width: auto;
         }
+        .date-refresh-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5em;
+            flex-wrap: nowrap;
+        }
+        .date-refresh-row label {
+            display: flex;
+            align-items: center;
+            gap: 0.35em;
+            flex: 1 1 auto;
+            min-width: 0;
+            white-space: nowrap;
+        }
+        .date-refresh-row input {
+            min-width: 0;
+            width: 9em;
+        }
+        .date-refresh-row button {
+            width: auto;
+            flex: 0 0 auto;
+            white-space: nowrap;
+        }
         .btn-pair {
             display: flex;
             flex-wrap: wrap;
@@ -309,9 +332,7 @@
         #camera-status-list div { font-size: 0.95em; line-height: 1.25; }
         #camera-status-list .stale { opacity: 0.65; color: #444; }
         /* make control column buttons align to full height when possible */
-        .control-column .btn-pair { margin-top: 6px; }
-        /* make control column buttons align to full height when possible */
-        .control-column .btn-pair { margin-top: 6px; }
+        .control-column .btn-pair { margin-top: 3px; }
     </style>
 </head>
 
@@ -321,12 +342,13 @@
             <h1 id="heading">Competition videos</h1>
 	        <div id='clock' style='font-size: 1.5em'></div>
 
-            <div id="disk-space-status" role="status" aria-live="polite" style="margin-top:0.5em;padding:6px 8px;border:1px solid #ccc;border-radius:6px;background:#fff;color:#333;font-size:0.9em;">
+            <div id="disk-space-status" role="status" aria-live="polite" style="margin-top:0.5em;padding:6px 8px;border:1px solid #ccc;border-radius:6px;background:#fff;color:#333;font-size:0.8em;">
                 Disk free space: <span id="disk-space-value">Checking…</span>
+                <small id="disk-space-minimum" style="font-size:0.8em;"></small>
                 <span id="disk-space-updated" style="color:#777;font-size:0.85em;"></span>
             </div>
 
-            <div id="camera-status-panel" style="margin-top:0.75em;font-size:0.95em;">
+            <div id="camera-status-panel" style="font-size:0.95em;">
                 <div id="camera-upload-alert" style="display:none;background:#ffefef;border:1px solid #e66;color:#600;padding:6px;border-radius:6px;margin-bottom:6px;">
                     ⚠ Cameras with large upload queues: <span id="camera-alert-text"></span>
                 </div>
@@ -351,11 +373,13 @@
                 Gymnast to find: <input id="eventdesc" type="text" onkeydown="if (event.key === 'Enter') {findEvent();}" />
                 <button onclick="findEvent()"><svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px" fill="#1f1f1f"><path d="M765-144 526-383q-30 22-65.79 34.5-35.79 12.5-76.18 12.5Q284-336 214-406t-70-170q0-100 70-170t170-70q100 0 170 70t70 170.03q0 40.39-12.5 76.18Q599-464 577-434l239 239-51 51ZM384-408q70 0 119-49t49-119q0-70-49-119t-119-49q-70 0-119 49t-49 119q0 70 49 119t119 49Z"/></svg></button>
             </label>
+            <div class="date-refresh-row">
+            <label>Date to review: <input id="date" type="date" onchange="setTimelineWindow()" /></label>
             <button onclick='refreshVideos()'>
                 <svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px" fill="#1f1f1f"><path d="M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-110h80v280H520v-80h168q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q77 0 139-44t87-116h84q-28 106-114 173t-196 67Z"/></svg>
-                Refresh timeline
+                Refresh
             </button>
-            <label style="float:right">Date to review: <input id="date" type="date" onchange="setTimelineWindow()" /></label>
+            </div>
             <button onclick="playbackSelected()">
                 <svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px" fill="#1f1f1f"><path d="m380-300 280-180-280-180v360ZM480-80q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/></svg>
                 Load &amp; Play selected
@@ -450,6 +474,7 @@
     async function updateDiskSpace() {
         const status = document.getElementById('disk-space-status');
         const value = document.getElementById('disk-space-value');
+        const minimum = document.getElementById('disk-space-minimum');
         const updated = document.getElementById('disk-space-updated');
         try {
             const response = await fetch('/diskspace', { cache: 'no-store' });
@@ -475,7 +500,9 @@
                 value.textContent += ' — getting low';
             }
             if (data.minimum_free_bytes > 0) {
-                value.textContent += ' <small>· minimum ' + formatDiskSpace(data.minimum_free_bytes) + '</small>';
+                minimum.textContent = ' · minimum ' + formatDiskSpace(data.minimum_free_bytes);
+            } else {
+                minimum.textContent = '';
             }
             updated.textContent = ' · updated ' + new Date().toLocaleTimeString();
         } catch (error) {
@@ -484,6 +511,7 @@
             status.style.color = '#333';
             status.removeAttribute('title');
             value.textContent = 'Unavailable';
+            minimum.textContent = '';
             updated.textContent = '';
             console.warn('Could not retrieve free disk space:', error);
         }
@@ -1967,6 +1995,7 @@
     // Camera status rendering and alerting
     const CAMERA_QUEUE_ALERT_MB = 200;
     const CAMERA_LOW_BATTERY_PCT = 5;
+    const CAMERA_CLOCK_SKEW_WARNING_MS = 60 * 1000;
     const CAMERA_STATUS_STALE_MS = 30 * 1000;
     const CAMERA_STATUS_EXPIRE_MS = 60 * 1000;
     let cameraAlertActive = false;
@@ -2079,10 +2108,16 @@
                 const symbol = status.battery.charging ? '⚡' : '🔋';
                 batteryText = `${symbol} ${pct}`;
             }
+            const clockSkew = Number.isFinite(status.cameraTime)
+                ? status.cameraTime - status.serverTime
+                : null;
+            const clockWarning = clockSkew !== null && Math.abs(clockSkew) >= CAMERA_CLOCK_SKEW_WARNING_MS
+                ? ` <span style="color:#a15c00;font-weight:bold" title="Camera and server clocks differ by ${Math.round(Math.abs(clockSkew) / 1000)} seconds">⚠ clock differs by ${Math.round(Math.abs(clockSkew) / 60000)} min</span>`
+                : '';
             const ageText = stale ? ` <span style="color:#999;font-size:90%;">(${Math.round(age/1000)}s ago)</span>` : '';
             const descText = description ? ` — ${description}` : '';
             const rowClass = stale ? 'stale' : '';
-            return `<div class="${rowClass}" style="margin-bottom:4px"><strong>${key}</strong>${descText} (${batteryText}) · ${queuedMB} MB waiting${ageText}</div>`;
+            return `<div class="${rowClass}" style="margin-bottom:4px"><strong>${key}</strong>${descText} (${batteryText}) · ${queuedMB} MB waiting${clockWarning}${ageText}</div>`;
         });
         panel.innerHTML = rows.join('');
 
@@ -2150,6 +2185,7 @@
                         description: msg.description || null,
                         battery: msg.battery || null,
                         queuedBytes: msg.queuedBytes || 0,
+                        cameraTime: Number.isFinite(msg.cameraTime) ? msg.cameraTime : null,
                         serverTime: msg.serverTime || Date.now()
                     };
                     renderCameraStatus();
